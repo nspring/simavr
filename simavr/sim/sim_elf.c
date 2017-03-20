@@ -332,6 +332,11 @@ int elf_read_firmware(const char * file, elf_firmware_t * firmware)
 		char * name = elf_strptr(elf, elf_header.e_shstrndx, shdr.sh_name);
 	//	printf("Walking elf section '%s'\n", name);
 
+        if(name == NULL) {
+          printf("Warning: skipping nameless elf section\n");
+          continue;
+        }
+
 		if (!strcmp(name, ".text"))
 			data_text = elf_getdata(scn, NULL);
 		else if (!strcmp(name, ".data"))
