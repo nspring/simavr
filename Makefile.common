@@ -50,7 +50,7 @@ ifeq (${shell uname}, Darwin)
  AVR_INC 	:= ${AVR_ROOT}/avr/
  AVR 		:= ${AVR_ROOT}/bin/avr-
  # Thats for MacPorts libelf
- ifeq (${shell test -d /opt/local && echo Exists}, Exists)
+ ifeq (${shell test -d /opt/local/avr && echo Exists}, Exists)
   ifneq (${shell test -d /opt/local/avr && echo Exists}, Exists)
    $(error Please install avr-gcc: port install avr-gcc avr-libc)
   endif

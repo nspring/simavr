@@ -295,7 +295,7 @@ avr_vcd_init_input(
 				vcd->signal[i].size);
 		/* format is <four-character ioctl>[_<IRQ index>] */
 		if (strlen(vcd->signal[i].name) >= 4) {
-			char *dup = strdupa(vcd->signal[i].name);
+			char *dup = strdup(vcd->signal[i].name);
 			char *ioctl = strsep(&dup, "_");
 			int index = 0;
 			if (dup)
@@ -309,13 +309,14 @@ avr_vcd_init_input(
 					avr_connect_irq(&vcd->signal[i].irq, irq);
 				} else
 					AVR_LOG(vcd->avr, LOG_WARNING,
-							"%s IRQ was not found\n",
-							vcd->signal[i].name);
-				continue;
-			}
-			AVR_LOG(vcd->avr, LOG_WARNING,
-					"%s is an invalid IRQ format\n",
-					vcd->signal[i].name);
+                                                "%s IRQ was not found\n",
+                                                vcd->signal[i].name);
+			} else {
+                               AVR_LOG(vcd->avr, LOG_WARNING,
+                                       "%s is an invalid IRQ format\n",
+                                       vcd->signal[i].name);
+                        }
+                        if(dup) free(dup);
 		}
 	}
 	return 0;
