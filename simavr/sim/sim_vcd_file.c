@@ -21,7 +21,6 @@
 	You should have received a copy of the GNU General Public License
 	along with simavr.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _GNU_SOURCE /* for strdupa */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
