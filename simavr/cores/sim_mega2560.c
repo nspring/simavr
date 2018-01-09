@@ -21,7 +21,6 @@
  */
 
 #include "sim_avr.h"
-#include "sim_core_declare.h"
 #include "avr_eeprom.h"
 #include "avr_flash.h"
 #include "avr_watchdog.h"
@@ -32,6 +31,7 @@
 #include "avr_timer.h"
 #include "avr_spi.h"
 #include "avr_twi.h"
+#include "avr_acomp.h"
 
 void m2560_init(struct avr_t * avr);
 void m2560_reset(struct avr_t * avr);
@@ -42,6 +42,8 @@ void m2560_reset(struct avr_t * avr);
 #define __AVR_ATmega2560__
 #endif
 #include "avr/iom2560.h"
+
+#include "sim_core_declare.h"
 
 /*
  * This is a template for all of the 2560 devices, hopefully
@@ -55,6 +57,7 @@ const struct mcu_t {
 	avr_ioport_t	porta, portb, portc, portd, porte, portf, portg, porth, portj, portk, portl;
 	avr_uart_t		uart0,uart1;
 	avr_uart_t		uart2,uart3;
+	avr_acomp_t		acomp;
 	avr_adc_t		adc;
 	avr_timer_t		timer0,timer1,timer2,timer3,timer4,timer5;
 	avr_spi_t		spi;
@@ -107,6 +110,30 @@ const struct mcu_t {
 	AVR_UARTX_DECLARE(1, PRR1, PRUSART1),
 	AVR_UARTX_DECLARE(2, PRR1, PRUSART2),
 	AVR_UARTX_DECLARE(3, PRR1, PRUSART3),
+
+	.acomp = {
+		.mux_inputs = 16,
+		.mux = { AVR_IO_REGBIT(ADMUX, MUX0), AVR_IO_REGBIT(ADMUX, MUX1),
+				AVR_IO_REGBIT(ADMUX, MUX2), AVR_IO_REGBIT(ADCSRB, MUX5) },
+		.pradc = AVR_IO_REGBIT(PRR0, PRADC),
+		.aden = AVR_IO_REGBIT(ADCSRA, ADEN),
+		.acme = AVR_IO_REGBIT(ADCSRB, ACME),
+
+		.r_acsr = ACSR,
+		.acis = { AVR_IO_REGBIT(ACSR, ACIS0), AVR_IO_REGBIT(ACSR, ACIS1) },
+		.acic = AVR_IO_REGBIT(ACSR, ACIC),
+		.aco = AVR_IO_REGBIT(ACSR, ACO),
+		.acbg = AVR_IO_REGBIT(ACSR, ACBG),
+		.disabled = AVR_IO_REGBIT(ACSR, ACD),
+
+		.timer_name = '1',
+
+		.ac = {
+			.enable = AVR_IO_REGBIT(ACSR, ACIE),
+			.raised = AVR_IO_REGBIT(ACSR, ACI),
+			.vector = ANALOG_COMP_vect,
+		}
+	},
 
 	.adc = {
 		.r_admux = ADMUX,
@@ -248,7 +275,7 @@ const struct mcu_t {
 			 [7] = AVR_TIMER_WGM_FASTPWM10(),
 			 // TODO: 8, 9 PWM phase and freq correct ICR & 10, 11
 			 [12] = AVR_TIMER_WGM_ICCTC(),
-			 [14] = AVR_TIMER_WGM_ICPWM(),
+			 [14] = AVR_TIMER_WGM_ICFASTPWM(),
 			 [15] = AVR_TIMER_WGM_OCPWM(),
 		},
 		.cs = { AVR_IO_REGBIT(TCCR1B, CS10), AVR_IO_REGBIT(TCCR1B, CS11), AVR_IO_REGBIT(TCCR1B, CS12) },
@@ -374,7 +401,7 @@ const struct mcu_t {
 			 //		 10
 			 //		 11
 			 [12] = AVR_TIMER_WGM_ICCTC(),
-			 [14] = AVR_TIMER_WGM_ICPWM(),
+			 [14] = AVR_TIMER_WGM_ICFASTPWM(),
 			 [15] = AVR_TIMER_WGM_OCPWM(),
 		},
 		.cs = { AVR_IO_REGBIT(TCCR3B, CS30), AVR_IO_REGBIT(TCCR3B, CS31), AVR_IO_REGBIT(TCCR3B, CS32) },
@@ -451,7 +478,7 @@ const struct mcu_t {
 			 [7] = AVR_TIMER_WGM_FASTPWM10(),
 			 // TODO: 8, 9 PWM phase and freq correct ICR & 10, 11
 			 [12] = AVR_TIMER_WGM_ICCTC(),
-			 [14] = AVR_TIMER_WGM_ICPWM(),
+			 [14] = AVR_TIMER_WGM_ICFASTPWM(),
 			 [15] = AVR_TIMER_WGM_OCPWM(),
 		},
 		.cs = { AVR_IO_REGBIT(TCCR4B, CS40), AVR_IO_REGBIT(TCCR4B, CS41), AVR_IO_REGBIT(TCCR4B, CS42) },
@@ -529,7 +556,7 @@ const struct mcu_t {
 			 [7] = AVR_TIMER_WGM_FASTPWM10(),
 			 // TODO: 8, 9 PWM phase and freq correct ICR & 10, 11
 			 [12] = AVR_TIMER_WGM_ICCTC(),
-			 [14] = AVR_TIMER_WGM_ICPWM(),
+			 [14] = AVR_TIMER_WGM_ICFASTPWM(),
 			 [15] = AVR_TIMER_WGM_OCPWM(),
 		},
 		.cs = { AVR_IO_REGBIT(TCCR5B, CS50), AVR_IO_REGBIT(TCCR5B, CS51), AVR_IO_REGBIT(TCCR5B, CS52) },

@@ -355,7 +355,7 @@ avr_timer_tcnt_read(
 	avr->data[p->r_tcnt] = tcnt;
 	if (p->r_tcnth)
 		avr->data[p->r_tcnth] = tcnt >> 8;
-	
+
 	return avr_core_watch_read(avr, addr);
 }
 
@@ -370,7 +370,7 @@ avr_timer_cancel_all_cycle_timers(
 			timer->comp[compi].comp_cycles = 0;
 		timer->tov_cycles = 0;
 	}
-	
+
 
 	avr_cycle_timer_cancel(avr, avr_timer_tov, timer);
 	avr_cycle_timer_cancel(avr, avr_timer_compa, timer);
@@ -391,7 +391,7 @@ avr_timer_tcnt_write(
 
 	if (!p->tov_top)
 		return;
-		
+
 	if (tcnt >= p->tov_top)
 		tcnt = 0;
 
@@ -457,7 +457,8 @@ avr_timer_configure(
 			if (prescaler != 0)
 				resulting_clock = p->ext_clock / prescaler;
 			tov_cycles_exact = (float)avr->frequency / p->ext_clock * prescaler * (top+1);
-			p->tov_cycles = round(tov_cycles_exact);
+			// p->tov_cycles = round(tov_cycles_exact); -- don't want libm!
+			p->tov_cycles = tov_cycles_exact + .5f; // Round to integer
 			p->tov_cycles_fract = tov_cycles_exact - p->tov_cycles;
 		}
 	}
@@ -498,13 +499,13 @@ avr_timer_configure(
 						__FUNCTION__, p->name, top, 'A'+compi, ocr);
 			}
 		}
-		if (ocr && ocr <= top) {
+		if (ocr <= top) {
 			p->comp[compi].comp_cycles = comp_cycles;
 
 			if (p->trace & (avr_timer_trace_compa << compi)) printf(
 					"TIMER: %s-%c %c %.2fHz = %d cycles\n",
 					__FUNCTION__, p->name,
-					'A'+compi, resulting_clock / ocr,
+					'A'+compi, resulting_clock / (ocr+1),
 					(int)comp_cycles);
 		}
 	}
@@ -574,9 +575,12 @@ avr_timer_reconfigure(
 				_timer_get_ocr(p, AVR_TIMER_COMPA) : _timer_get_icr(p);
 			avr_timer_configure(p, p->cs_div_value, top, reset);
 		}	break;
-		case avr_timer_wgm_fast_pwm:
-			avr_timer_configure(p, p->cs_div_value, p->wgm_op_mode_size, reset);
-			break;
+		case avr_timer_wgm_fast_pwm: {
+			uint16_t top =
+				(p->mode.top == avr_timer_wgm_reg_icr) ? _timer_get_icr(p) :
+				p->wgm_op_mode_size;
+			avr_timer_configure(p, p->cs_div_value, top, reset);
+		}	break;
 		case avr_timer_wgm_none:
 			avr_timer_configure(p, p->cs_div_value, p->wgm_op_mode_size, reset);
 			break;
@@ -585,7 +589,7 @@ avr_timer_reconfigure(
 			AVR_LOG(avr, LOG_WARNING, "TIMER: %s-%c unsupported timer mode wgm=%d (%d)\n",
 					__FUNCTION__, p->name, mode, p->mode.kind);
 		}
-	}	
+	}
 }
 
 static void
@@ -662,6 +666,7 @@ avr_timer_write(
 	if (new_cs != cs || new_mode != mode || new_as2 != as2) {
 	/* cs */
 		if (new_cs == 0) {
+			p->cs_div_value = 0;		// reset prescaler
 			// cancel everything
 			avr_timer_cancel_all_cycle_timers(avr, p, 1);
 
@@ -827,13 +832,16 @@ avr_timer_reset(
 			avr_connect_irq(&port->irq[TIMER_IRQ_OUT_COMP + compi], req.irq[0]);
 		}
 	}
+
+	avr_irq_register_notify(port->irq + TIMER_IRQ_IN_ICP, avr_timer_irq_icp, p);
+
 	avr_ioport_getirq_t req = {
 		.bit = p->icp
 	};
 	if (avr_ioctl(port->avr, AVR_IOCTL_IOPORT_GETIRQ_REGBIT, &req) > 0) {
 		// cool, got an IRQ for the input capture pin
 		//printf("%s-%c ICP Connecting PIN IRQ %d\n", __func__, p->name, req.irq[0]->irq);
-		avr_irq_register_notify(req.irq[0], avr_timer_irq_icp, p);
+		avr_connect_irq(req.irq[0], port->irq + TIMER_IRQ_IN_ICP);
 	}
 	p->ext_clock_flags &= ~(AVR_TIMER_EXTCLK_FLAG_STARTED | AVR_TIMER_EXTCLK_FLAG_TN |
 							AVR_TIMER_EXTCLK_FLAG_AS2 | AVR_TIMER_EXTCLK_FLAG_REVDIR);
@@ -843,6 +851,7 @@ avr_timer_reset(
 static const char * irq_names[TIMER_IRQ_COUNT] = {
 	[TIMER_IRQ_OUT_PWM0] = "8>pwm0",
 	[TIMER_IRQ_OUT_PWM1] = "8>pwm1",
+	[TIMER_IRQ_IN_ICP] = "<icp",
 	[TIMER_IRQ_OUT_COMP + 0] = ">compa",
 	[TIMER_IRQ_OUT_COMP + 1] = ">compb",
 	[TIMER_IRQ_OUT_COMP + 2] = ">compc",
@@ -917,7 +926,7 @@ avr_timer_init(
 	 */
 	for (int compi = 0; compi < AVR_TIMER_COMP_COUNT; compi++) {
 		p->comp[compi].timer = p;
-		
+
 		avr_register_vector(avr, &p->comp[compi].interrupt);
 
 		if (p->comp[compi].r_ocr) // not all timers have all comparators

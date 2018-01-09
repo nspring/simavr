@@ -26,6 +26,16 @@
 extern "C" {
 #endif
 
+#ifndef __has_attribute
+	#define __has_attribute(x) 0
+#endif
+
+#if __has_attribute(fallthrough)
+	#define FALLTHROUGH __attribute__((fallthrough));
+#else
+	#define FALLTHROUGH
+#endif
+
 #include "sim_irq.h"
 #include "sim_interrupts.h"
 #include "sim_cmds.h"
@@ -149,6 +159,7 @@ typedef void (*avr_run_t)(
 typedef struct avr_t {
 	const char * 		mmcu;	// name of the AVR
 	// these are filled by sim_core_declare from constants in /usr/lib/avr/include/avr/io*.h
+	uint16_t			ioend;
 	uint16_t 			ramend;
 	uint32_t			flashend;
 	uint32_t			e2end;
@@ -159,6 +170,12 @@ typedef struct avr_t {
 	avr_io_addr_t		rampz;	// optional, only for ELPM/SPM on >64Kb cores
 	avr_io_addr_t		eind;	// optional, only for EIJMP/EICALL on >64Kb cores
 	uint8_t				address_size;	// 2, or 3 for cores >128KB in flash
+	struct {
+		avr_regbit_t		porf;
+		avr_regbit_t		extrf;
+		avr_regbit_t		borf;
+		avr_regbit_t		wdrf;
+	} reset_flags;
 
 	// filled by the ELF data, this allow tracking of invalid jumps
 	uint32_t			codeend;
@@ -184,6 +201,7 @@ typedef struct avr_t {
 	 * is passed on to the operating system.
 	 */
 	uint32_t 			sleep_usec;
+	uint64_t			sim_start_time_ns;
 
 	// called at init time
 	void (*init)(struct avr_t * avr);
