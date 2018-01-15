@@ -140,6 +140,11 @@ avr_reset(
 {
 	AVR_LOG(avr, LOG_TRACE, "%s reset\n", avr->mmcu);
 
+	if (!avr->data) {
+		AVR_LOG(((avr_t*)0), LOG_ERROR, "%s: avr->data is unexpectedly null\n", __FUNCTION__);
+		return;
+	}
+
 	avr->state = cpu_Running;
 	for(int i = 0x20; i <= avr->ioend; i++)
 		avr->data[i] = 0;
