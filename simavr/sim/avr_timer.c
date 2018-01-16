@@ -111,7 +111,7 @@ avr_timer_comp(
 static void
 avr_timer_comp_on_tov(
 		avr_timer_t *p,
-		avr_cycle_count_t when,
+		avr_cycle_count_t when __attribute__((unused)),
 		uint8_t comp)
 {
 	avr_t * avr = p->io.avr;
@@ -136,7 +136,7 @@ avr_timer_comp_on_tov(
 
 static avr_cycle_count_t
 avr_timer_compa(
-		struct avr_t * avr,
+                struct avr_t * avr __attribute__((unused)),
 		avr_cycle_count_t when,
 		void * param)
 {
@@ -145,7 +145,7 @@ avr_timer_compa(
 
 static avr_cycle_count_t
 avr_timer_compb(
-		struct avr_t * avr,
+		struct avr_t * avr __attribute__((unused)),
 		avr_cycle_count_t when,
 		void * param)
 {
@@ -154,7 +154,7 @@ avr_timer_compb(
 
 static avr_cycle_count_t
 avr_timer_compc(
-		struct avr_t * avr,
+		struct avr_t * avr __attribute__((unused)),
 		avr_cycle_count_t when,
 		void * param)
 {
@@ -245,7 +245,7 @@ avr_timer_irq_ext_clock(
 			break;
 		case avr_timer_wgm_ctc:
 			{
-				int max = (1 << p->wgm_op[0].size)-1;
+				unsigned int max = (1 << p->wgm_op[0].size)-1;
 				if (++p->tov_base > max) {
 					// overflow occured
 					p->tov_base = 0;
@@ -706,8 +706,8 @@ avr_timer_write(
 static void
 avr_timer_write_pending(
 		struct avr_t * avr,
-		avr_io_addr_t addr,
-		uint8_t v,
+		avr_io_addr_t addr __attribute__((unused)),
+		uint8_t v __attribute__((unused)),
 		void * param)
 {
 	avr_timer_t * p = (avr_timer_t *)param;

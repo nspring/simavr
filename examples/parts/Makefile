@@ -28,6 +28,11 @@ include ${simavr}/Makefile.common
 
 objects := $(patsubst %.c,${OBJ}/%.o, $(wildcard *.c))
 
+# in the absence of libglut / GL/glut.h (as on grace, sigh.)
+ifeq ("$(wildcard /usr/include/GL/glut.h)","")
+	objects := $(filter-out %_glut.o, $(objects))
+endif
+
 # Unless the VHCI_USB env var is set, don't build this because it requires
 # a supporting library to be installed. See examples/extra_board_usb/README
 # for details on how to build it.

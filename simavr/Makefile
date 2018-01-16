@@ -24,7 +24,7 @@ SIMAVR_REVISION	= 2
 
 target	= run_avr
 
-CFLAGS	+= -Werror
+# CFLAGS	+= -Werror
 # tracing is useful especialy if you develop simavr core.
 # it otherwise eat quite a bit of few cycles, even disabled
 #CFLAGS	+= -DCONFIG_SIMAVR_TRACE=1

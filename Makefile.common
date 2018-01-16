@@ -39,7 +39,8 @@ SIMAVR		:= ${shell for p in . .. ../.. ../../..;do test -d $$p/simavr/sim && ech
 # get the first character of what the compiler says it is, unless it's 'x86_64' doh
 ARCH 		:= ${shell $(CC) -dumpmachine | sed -e 's/^x/i/' -e 's/\(.\).*/\1/'}
 
-CFLAGS		+= -O2 -Wall -Wextra -Wno-unused-parameter \
+# -Wno-unused-parameter not available on grace / gcc 4.4 something. geez. 
+CFLAGS		+= -O2 -Wall -Wextra \
 			-Wno-unused-result -Wno-missing-field-initializers \
 			-Wno-sign-compare
 CFLAGS		+= -g
@@ -118,6 +119,10 @@ LIBDIR		:= ${shell pwd}/${SIMAVR}/${OBJ}
 LDFLAGS 	+= -L${LIBDIR} -lsimavr -lm
 
 LDFLAGS 	+= -lelf
+# for clock_gettime on RHEL 6.9
+ifneq ("$(wildcard /usr/lib/librt.so)","")
+LDFLAGS 	+= -lrt 
+endif
 
 ifeq (${WIN}, Msys)
 LDFLAGS      += -lws2_32
