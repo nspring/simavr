@@ -18,18 +18,21 @@
 #include <libgen.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 
 #include "sim_avr.h"
 #include "avr_ioport.h"
 #include "sim_elf.h"
 #include "sim_gdb.h"
 #include "sim_vcd_file.h"
+#include "avr_adc.h"
 #include "avr_acomp.h"
 
 #define F_CPU 8000000U
 
 avr_t * avr = NULL;
-avr_vcd_t vcd_file;
+avr_vcd_t vcd_output_file;
+avr_vcd_t vcd_input_file;
 uint8_t	pin_state = 0;	// current port B
 
 float pixsize = 64;
@@ -51,6 +54,11 @@ void led_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
   static unsigned char led_is_on;
   if(value != led_is_on) led_flipped_count++;
   led_is_on = value;
+}
+
+void adc_hook(struct avr_irq_t * irq, uint32_t value, void * param)
+{
+  printf("adc is hooked!\n");
 }
 
 void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param) {
@@ -157,16 +165,26 @@ int main(int argc, char *argv[])
 	}
 
     /* gets the B pins */
-	avr_vcd_init(avr, "gtkwave_output.vcd", &vcd_file, 100000 /* usec */);
-	avr_vcd_add_signal(&vcd_file, 
+	avr_vcd_init(avr, "gtkwave_output-B.vcd", &vcd_output_file, 100000 /* usec */);
+	avr_vcd_add_signal(&vcd_output_file, 
 		avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('B'), IOPORT_IRQ_PIN_ALL), 8 /* bits */ ,
 		"portb" );
+
+    struct stat dummy_stat;
+    if(stat("gtkwave_input.vcd", &dummy_stat) == 0) {
+      printf("avr_vcd_init_input returned %d\n",
+             avr_vcd_init_input(avr, "gtkwave_input.vcd", &vcd_input_file) );
+    }
 
     /* something for setting the analog light value */
     /* this is from one of the tests. */
     /* the schematic shows A5 on PF0, ADC0 */
     avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_ACOMP_GETIRQ, ACOMP_IRQ_ADC0), 3000); 
-    
+
+    avr_irq_register_notify(avr_io_getirq( avr, AVR_IOCTL_ADC_GETIRQ,
+                                           ADC_IRQ_OUT_TRIGGER ),
+                            adc_hook,
+                            NULL); 
 
     /* nstodo: investigate using built in
        avr_cycle_timer_register() to set an expiration time
@@ -190,3 +208,17 @@ int main(int argc, char *argv[])
             "led_flipped_count: %d\n",
             led_flipped_count);
 }
+
+
+/* cruft from https://groups.google.com/forum/#!topic/simavr/S0hHPd6Y99Q 
+avr_irq_register_notify(
+                        avr_io_getirq( Avr, AVR_IOCTL_ADC_GETIRQ,
+                                       ADC_IRQ_OUT_TRIGGER ),
+                        adc_hook,
+                        this);
+
+m_adc_irq = avr_alloc_irq(0, 1);
+avr_connect_irq( m_adc_irq, avr_io_getirq( AvrProcessor,
+                                           AVR_IOCTL_ADC_GETIRQ, m_pin ) );
+*/
+
