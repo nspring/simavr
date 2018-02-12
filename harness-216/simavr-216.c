@@ -70,13 +70,23 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
      we're starting over.  Even on init, we only blit zeroes
      out at cycle 255 after the pin is set to output
      low.. */
-  if(avr->cycle > last_cycle + 200) {
+  if(avr->cycle > last_cycle + 100) {
+    /* should make sure this is a low to high transition */
+    if(value != 1) {
+      fprintf(stderr, "unexpected high to low transition on neopixel pin\n");
+      return;
+    }
     start_cycle = avr->cycle;
     memset(Pixels, 0, sizeof(Pixels));
     // fprintf(stderr, "starting pixel set at cycle %llu\n", avr->cycle);
   }
   last_cycle = avr->cycle;
   position = avr->cycle - start_cycle;
+
+  if(position > 2400) {
+    fprintf(stderr, "lost sync with neopixel signal, likely due to extra signal on pin 17 from a conflicting library\n");
+    return;
+  }
 
   // fprintf(stderr, "position: %lu %u\n", position, value);
   /* it takes 2400 cycles to program the bits.  That's 
