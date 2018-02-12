@@ -129,8 +129,7 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
 
-	elf_read_firmware(fname, &f);
-
+	printf("elf_read_firmward returned: %d\n", elf_read_firmware(fname, &f)); 
 
     if(f.mmcu[0] == '\0') { 
       fprintf(stderr, "Failed to find simavr_tracing.h defined processor infomation; using default atmega32u4 at 8Mhz\n");
