@@ -101,7 +101,7 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
   }
   
   if(position > 2390) {
-    printf("pixel dump at cycle %llu: ", avr->cycle);
+    printf("pixel dump at cycle %llu: ", (unsigned long long)avr->cycle);
     for(pixel=0; pixel<10; pixel++) {
       for(color=0; color<3; color++) {
         /* TODO: consider RGB for diminished confusion? */
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
 
     fprintf(stderr,
             "simulation terminated after %lu steps, %lu.%06d seconds\n",
-            step, delta_t.tv_sec, delta_t.tv_usec);
+            step, (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
     fprintf(stderr,
             "led_flipped_count: %d\n",
             led_flipped_count);
