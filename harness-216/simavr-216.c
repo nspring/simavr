@@ -70,13 +70,23 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
      we're starting over.  Even on init, we only blit zeroes
      out at cycle 255 after the pin is set to output
      low.. */
-  if(avr->cycle > last_cycle + 200) {
+  if(avr->cycle > last_cycle + 100) {
+    /* should make sure this is a low to high transition */
+    if(value != 1) {
+      fprintf(stderr, "unexpected high to low transition on neopixel pin\n");
+      return;
+    }
     start_cycle = avr->cycle;
     memset(Pixels, 0, sizeof(Pixels));
     // fprintf(stderr, "starting pixel set at cycle %llu\n", avr->cycle);
   }
   last_cycle = avr->cycle;
   position = avr->cycle - start_cycle;
+
+  if(position > 2400) {
+    fprintf(stderr, "lost sync with neopixel signal, likely due to extra signal on pin 17 from a conflicting library\n");
+    return;
+  }
 
   // fprintf(stderr, "position: %lu %u\n", position, value);
   /* it takes 2400 cycles to program the bits.  That's 
@@ -101,7 +111,7 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
   }
   
   if(position > 2390) {
-    printf("pixel dump at cycle %llu: ", avr->cycle);
+    printf("pixel dump at cycle %llu: ", (unsigned long long)avr->cycle);
     for(pixel=0; pixel<10; pixel++) {
       for(color=0; color<3; color++) {
         /* TODO: consider RGB for diminished confusion? */
@@ -129,8 +139,7 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
 
-	elf_read_firmware(fname, &f);
-
+	printf("elf_read_firmward returned: %d\n", elf_read_firmware(fname, &f)); 
 
     if(f.mmcu[0] == '\0') { 
       fprintf(stderr, "Failed to find simavr_tracing.h defined processor infomation in %s; using default atmega32u4 at 8Mhz\n", fname);
@@ -203,7 +212,7 @@ int main(int argc, char *argv[])
 
     fprintf(stderr,
             "simulation terminated after %lu steps, %lu.%06d seconds\n",
-            step, delta_t.tv_sec, delta_t.tv_usec);
+            step, (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
     fprintf(stderr,
             "led_flipped_count: %d\n",
             led_flipped_count);
