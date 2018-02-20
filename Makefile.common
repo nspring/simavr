@@ -187,7 +187,7 @@ ${OBJ}/%.elf:
 ifneq ($(E),)
 	@echo LD $@
 endif
-	${E}$(CC) -MMD ${CFLAGS}  ${LFLAGS} -o $@ ${filter %.o,$^} $(LDFLAGS)
+	${E}$(CC) -MMD ${CFLAGS}   -o $@ ${filter %.o,$^} $(LDFLAGS) ${LFLAGS}
 
 
 .PRECIOUS: ${OBJ}/%.a ${OBJ}/%.so.1
