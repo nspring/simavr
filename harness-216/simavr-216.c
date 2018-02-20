@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
 {
 	elf_firmware_t f;
 	const char * fname;
-    unsigned long step, step_limit = F_CPU * 15; /* 15 seconds */
+    unsigned long step, step_limit = F_CPU * 15; /* 15 seconds, 120,000,000 */
     struct timeval start_time, end_time, delta_t;
 
     if (argc > 1) { 
@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 
 
     if(f.mmcu[0] == '\0') { 
-      fprintf(stderr, "Failed to find simavr_tracing.h defined processor infomation; using default atmega32u4 at 8Mhz\n");
+      fprintf(stderr, "Failed to find simavr_tracing.h defined processor infomation in %s; using default atmega32u4 at 8Mhz\n", fname);
       strcpy(f.mmcu, "atmega32u4");
       f.frequency = F_CPU;
     } else  {
