@@ -25,6 +25,7 @@ build-parts: build-examples
 
 install:
 	$(MAKE) -C simavr install RELEASE=$(RELEASE)
+	$(MAKE) -C harness-216 install RELEASE=$(RELEASE)
 
 doc:
 	$(MAKE) -C doc RELEASE=$(RELEASE)

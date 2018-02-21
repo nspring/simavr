@@ -635,6 +635,7 @@ avr_gdb_init(
 		goto error;
 	}
 
+#ifdef USE_FIXED_GDB_PORT
 	int optval = 1;
 	setsockopt(g->listen, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
@@ -646,11 +647,46 @@ avr_gdb_init(
 		AVR_LOG(avr, LOG_ERROR, "GDB: Can not bind socket: %s", strerror(errno));
 		goto error;
 	}
+#else
+        struct sockaddr_in address = { .sin_family = AF_INET,
+                                       .sin_addr = { .s_addr = 0 },
+                                       .sin_port = 0 };
+        socklen_t sz = sizeof(address);
+	if (bind(g->listen, (struct sockaddr *) &address, sz)) { 
+		AVR_LOG(avr, LOG_ERROR, "GDB: Can not bind socket: %s", strerror(errno));
+		goto error;
+	}
+        if(getsockname(g->listen, (struct sockaddr *)&address, &sz)) { 
+		AVR_LOG(avr, LOG_ERROR, "GDB: Can not getsockname: %s", strerror(errno));
+		goto error;
+        }
+	avr->gdb_port = ntohs(address.sin_port);
+        FILE *gdbinit_orig = fopen(".gdbinit","r");
+        FILE *gdbinit = fopen(".gdbinit.new","w");
+        if(gdbinit_orig && gdbinit) { 
+          char buffy[1024];
+          while(fgets(buffy, 1024, gdbinit_orig)) {
+            if(!strstr(buffy, "target remote localhost") && !strstr(buffy, "simavr")) {
+              fputs(buffy, gdbinit);
+            }
+          }
+        } 
+        if(gdbinit_orig) fclose(gdbinit_orig);
+        if(gdbinit) {
+          fprintf(gdbinit, "target remote localhost:%d # simavr\n", avr->gdb_port);
+          fclose(gdbinit);
+          if(rename(".gdbinit.new", ".gdbinit")) {
+            AVR_LOG(avr, LOG_ERROR, "GDB: Unable to move .gdbinit.new over .gdbinit");
+          }
+        } else {
+          AVR_LOG(avr, LOG_ERROR, "GDB: Unable to open .gdbinit.new for writing");
+        }
+#endif
 	if (listen(g->listen, 1)) {
 		perror("listen");
 		goto error;
 	}
-	printf("avr_gdb_init listening on port %d\n", avr->gdb_port);
+	printf("avr_gdb_init is listening on port %d!\n", avr->gdb_port);
 	g->avr = avr;
 	g->s = -1;
 	avr->gdb = g;

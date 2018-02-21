@@ -297,7 +297,8 @@ avr_vcd_init_input(
 				vcd->signal[i].size);
 		/* format is <four-character ioctl>[_<IRQ index>] */
 		if (strlen(vcd->signal[i].name) >= 4) {
-			char *dup = strdup(vcd->signal[i].name);
+			char *free_me = strdup(vcd->signal[i].name);
+            char *dup = free_me;
 			char *ioctl = strsep(&dup, "_");
 			int index = 0;
 			if (dup)
@@ -318,7 +319,7 @@ avr_vcd_init_input(
                                        "%s is an invalid IRQ format\n",
                                        vcd->signal[i].name);
                         }
-                        if(dup) free(dup);
+                        if(free_me) free(free_me);
 		}
 	}
 	return 0;

@@ -290,7 +290,8 @@ void
 avr_callback_run_gdb(
 		avr_t * avr)
 {
-	avr_gdb_processor(avr, avr->state == cpu_Stopped);
+  // if stopped, timeout after ten ms (instead of a microsecond)
+  avr_gdb_processor(avr, avr->state == cpu_Stopped ? 10000 : 0);
 
 	if (avr->state == cpu_Stopped)
 		return ;

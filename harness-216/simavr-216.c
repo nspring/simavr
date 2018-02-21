@@ -18,18 +18,21 @@
 #include <libgen.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 
 #include "sim_avr.h"
 #include "avr_ioport.h"
 #include "sim_elf.h"
 #include "sim_gdb.h"
 #include "sim_vcd_file.h"
+#include "avr_adc.h"
 #include "avr_acomp.h"
 
 #define F_CPU 8000000U
 
 avr_t * avr = NULL;
-avr_vcd_t vcd_file;
+avr_vcd_t vcd_output_file;
+avr_vcd_t vcd_input_file;
 uint8_t	pin_state = 0;	// current port B
 
 float pixsize = 64;
@@ -53,6 +56,11 @@ void led_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
   led_is_on = value;
 }
 
+void adc_hook(struct avr_irq_t * irq, uint32_t value, void * param)
+{
+  printf("adc is hooked!\n");
+}
+
 void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param) {
   static unsigned long start_cycle, last_cycle;
   unsigned long position;
@@ -62,13 +70,25 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
      we're starting over.  Even on init, we only blit zeroes
      out at cycle 255 after the pin is set to output
      low.. */
-  if(avr->cycle > last_cycle + 200) {
+  if(avr->cycle > last_cycle + 100) {
+    /* should make sure this is a low to high transition */
+    if(value != 1) {
+      if (last_cycle != 0) {
+        fprintf(stderr, "unexpected high to low transition on neopixel pin, %d cycles after low to high\n", avr->cycle - last_cycle);
+      } /* else this is the first transition, setting to low initially */
+      return;
+    }
     start_cycle = avr->cycle;
     memset(Pixels, 0, sizeof(Pixels));
     // fprintf(stderr, "starting pixel set at cycle %llu\n", avr->cycle);
   }
   last_cycle = avr->cycle;
   position = avr->cycle - start_cycle;
+
+  if(position > 2400) {
+    fprintf(stderr, "lost sync with neopixel signal, likely due to extra signal on pin 17 from a conflicting library\n");
+    return;
+  }
 
   // fprintf(stderr, "position: %lu %u\n", position, value);
   /* it takes 2400 cycles to program the bits.  That's 
@@ -93,7 +113,7 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
   }
   
   if(position > 2390) {
-    printf("pixel dump at cycle %llu: ", avr->cycle);
+    printf("pixel dump at cycle %llu: ", (unsigned long long)avr->cycle);
     for(pixel=0; pixel<10; pixel++) {
       for(color=0; color<3; color++) {
         /* TODO: consider RGB for diminished confusion? */
@@ -111,7 +131,7 @@ int main(int argc, char *argv[])
 {
 	elf_firmware_t f;
 	const char * fname;
-    unsigned long step, step_limit = F_CPU * 15; /* 15 seconds */
+    unsigned long step, step_limit = F_CPU * 15; /* 15 seconds, 120,000,000 */
     struct timeval start_time, end_time, delta_t;
 
     if (argc > 1) { 
@@ -121,11 +141,10 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
 
-	elf_read_firmware(fname, &f);
-
+	printf("elf_read_firmward returned: %d\n", elf_read_firmware(fname, &f)); 
 
     if(f.mmcu[0] == '\0') { 
-      fprintf(stderr, "Failed to find simavr_tracing.h defined processor infomation; using default atmega32u4 at 8Mhz\n");
+      fprintf(stderr, "Failed to find simavr_tracing.h defined processor infomation in %s; using default atmega32u4 at 8Mhz\n", fname);
       strcpy(f.mmcu, "atmega32u4");
       f.frequency = F_CPU;
     } else  {
@@ -157,16 +176,26 @@ int main(int argc, char *argv[])
 	}
 
     /* gets the B pins */
-	avr_vcd_init(avr, "gtkwave_output.vcd", &vcd_file, 100000 /* usec */);
-	avr_vcd_add_signal(&vcd_file, 
+	avr_vcd_init(avr, "gtkwave_output-B.vcd", &vcd_output_file, 100000 /* usec */);
+	avr_vcd_add_signal(&vcd_output_file, 
 		avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('B'), IOPORT_IRQ_PIN_ALL), 8 /* bits */ ,
 		"portb" );
+
+    struct stat dummy_stat;
+    if(stat("gtkwave_input.vcd", &dummy_stat) == 0) {
+      printf("avr_vcd_init_input returned %d\n",
+             avr_vcd_init_input(avr, "gtkwave_input.vcd", &vcd_input_file) );
+    }
 
     /* something for setting the analog light value */
     /* this is from one of the tests. */
     /* the schematic shows A5 on PF0, ADC0 */
     avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_ACOMP_GETIRQ, ACOMP_IRQ_ADC0), 3000); 
-    
+
+    avr_irq_register_notify(avr_io_getirq( avr, AVR_IOCTL_ADC_GETIRQ,
+                                           ADC_IRQ_OUT_TRIGGER ),
+                            adc_hook,
+                            NULL); 
 
     /* nstodo: investigate using built in
        avr_cycle_timer_register() to set an expiration time
@@ -185,8 +214,22 @@ int main(int argc, char *argv[])
 
     fprintf(stderr,
             "simulation terminated after %lu steps, %lu.%06d seconds\n",
-            step, delta_t.tv_sec, delta_t.tv_usec);
+            step, (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
     fprintf(stderr,
             "led_flipped_count: %d\n",
             led_flipped_count);
 }
+
+
+/* cruft from https://groups.google.com/forum/#!topic/simavr/S0hHPd6Y99Q 
+avr_irq_register_notify(
+                        avr_io_getirq( Avr, AVR_IOCTL_ADC_GETIRQ,
+                                       ADC_IRQ_OUT_TRIGGER ),
+                        adc_hook,
+                        this);
+
+m_adc_irq = avr_alloc_irq(0, 1);
+avr_connect_irq( m_adc_irq, avr_io_getirq( AvrProcessor,
+                                           AVR_IOCTL_ADC_GETIRQ, m_pin ) );
+*/
+

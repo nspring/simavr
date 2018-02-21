@@ -6,7 +6,7 @@
 # ruby.
 # 
 
-target=	harness-216
+target=	simavr-216
 simavr = ../
 SIMAVR=../
 
@@ -28,7 +28,7 @@ include ${simavr}/Makefile.common
 
 board = ${OBJ}/${target}.elf
 
-${board} : ${OBJ}/${target}.o
+${board} : ${OBJ}/${target}.o ${simavr}/simavr/${OBJ}/libsimavr.a
 
 ${target}: ${board}
 	@echo $@ done
@@ -38,3 +38,12 @@ clean: clean-${OBJ}
 
 run: ${board}
 	${board} ../../build-circuitplay32u4cat/circuit-playground.elf
+
+
+DESTDIR = /usr/local
+PREFIX = ${DESTDIR}
+
+install: ${OBJ}/${target}.elf
+	$(MKDIR) $(DESTDIR)/bin
+	$(INSTALL) ${OBJ}/${target}.elf $(DESTDIR)/bin/${target}
+
