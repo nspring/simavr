@@ -177,6 +177,16 @@ main(
 	if (f_cpu)
 		f.frequency = f_cpu;
 
+    if (!f.mmcu[0]) { /* ns for 216 */
+		strcpy(f.mmcu, "atmega32u4");
+        if (!f.frequency) {
+          f.frequency = 8000000;
+          fprintf(stderr, "%s: Assuming atmega32u4 at 8MHz\n", argv[0]);
+        } else {
+          fprintf(stderr, "%s: Assuming atmega32u4\n", argv[0]);
+        }
+    } 
+
 	avr = avr_make_mcu_by_name(f.mmcu);
 	if (!avr) {
 		fprintf(stderr, "%s: AVR '%s' not known\n", argv[0], f.mmcu);
