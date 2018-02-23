@@ -118,6 +118,7 @@ LIBDIR		:= ${shell pwd}/${SIMAVR}/${OBJ}
 LDFLAGS 	+= -L${LIBDIR} -lsimavr -lm
 
 LDFLAGS 	+= -lelf
+LDFLAGS 	+= -ltermcap
 
 ifeq (${WIN}, Msys)
 LDFLAGS      += -lws2_32
