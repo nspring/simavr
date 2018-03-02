@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include "sim_avr.h"
 #include "sim_core.h"
@@ -70,13 +71,34 @@ avr_global_logger_get(void)
 	return _avr_global_logger;
 }
 
+uint64_t
+avr_get_time_stamp(
+		avr_t * avr )
+{
+	uint64_t stamp;
+#ifndef CLOCK_MONOTONIC_RAW
+	/* CLOCK_MONOTONIC_RAW isn't portable, here is the POSIX alternative.
+	 * Only downside is that it will drift if the system clock changes */
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	stamp = (((uint64_t)tv.tv_sec) * 1E9) + (tv.tv_usec * 1000);
+#else
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+	stamp = (tp.tv_sec * 1E9) + tp.tv_nsec;
+#endif
+	if (!avr->time_base)
+		avr->time_base = stamp;
+	return stamp - avr->time_base;
+}
 
 int
 avr_init(
 		avr_t * avr)
 {
-	avr->flash = malloc(avr->flashend + 1);
+	avr->flash = malloc(avr->flashend + 4);
 	memset(avr->flash, 0xff, avr->flashend + 1);
+	*((uint16_t*)&avr->flash[avr->flashend + 1]) = AVR_OVERFLOW_OPCODE;
 	avr->codeend = avr->flashend;
 	avr->data = malloc(avr->ramend + 1);
 	memset(avr->data, 0, avr->ramend + 1);
@@ -102,6 +124,7 @@ avr_init(
 	avr->address_size = avr->eind ? 3 : 2;
 	avr->log = 1;
 	avr_reset(avr);
+	avr_regbit_set(avr, avr->reset_flags.porf);		// by  default set to power-on reset
 	return 0;
 }
 
@@ -136,11 +159,10 @@ void
 avr_reset(
 		avr_t * avr)
 {
-	int noof_ios = MAX_IOs > avr->ramend ? avr->ramend : avr->ramend;
 	AVR_LOG(avr, LOG_TRACE, "%s reset\n", avr->mmcu);
 
 	avr->state = cpu_Running;
-	for(int i = 0x20; i < noof_ios; i++)
+	for(int i = 0x20; i <= avr->ioend; i++)
 		avr->data[i] = 0;
 	_avr_sp_set(avr, avr->ramend);
 	avr->pc = avr->reset_pc;	// Likely to be zero
@@ -311,15 +333,25 @@ avr_callback_run_gdb(
 
 }
 
+/*
+To avoid simulated time and wall clock time to diverge over time
+this function tries to keep them in sync (roughly) by sleeping
+for the time required to match the expected sleep deadline
+in wall clock time.
+*/
 void
 avr_callback_sleep_raw(
-		avr_t * avr,
-		avr_cycle_count_t howLong)
+		avr_t *avr,
+		avr_cycle_count_t how_long)
 {
-	uint32_t usec = avr_pending_sleep_usec(avr, howLong);
-	if (usec > 0) {
-		usleep(usec);
-	}
+	/* figure out how long we should wait to match the sleep deadline */
+	uint64_t deadline_ns = avr_cycles_to_nsec(avr, avr->cycle + how_long);
+	uint64_t runtime_ns = avr_get_time_stamp(avr);
+	if (runtime_ns >= deadline_ns)
+		return;
+	uint64_t sleep_us = (deadline_ns - runtime_ns) / 1000;
+	usleep(sleep_us);
+	return;
 }
 
 void

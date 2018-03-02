@@ -71,18 +71,32 @@
 # define _FUSE_HELPER { 0 }
 #endif
 
+#ifdef MCUCSR
+# define MCU_STATUS_REG MCUCSR
+#else
+# define MCU_STATUS_REG MCUSR
+#endif
+
 #ifdef SIGNATURE_0
 #define DEFAULT_CORE(_vector_size) \
+	.ioend  = RAMSTART - 1, \
 	.ramend = RAMEND, \
 	.flashend = FLASHEND, \
 	.e2end = E2END, \
 	.vector_size = _vector_size, \
 	.fuse = _FUSE_HELPER, \
 	.signature = { SIGNATURE_0,SIGNATURE_1,SIGNATURE_2 }, \
-	.lockbits = 0xFF
+	.lockbits = 0xFF, \
+	.reset_flags = {\
+		.porf = AVR_IO_REGBIT(MCU_STATUS_REG, PORF),\
+		.extrf = AVR_IO_REGBIT(MCU_STATUS_REG, EXTRF),\
+		.borf = AVR_IO_REGBIT(MCU_STATUS_REG, BORF),\
+		.wdrf = AVR_IO_REGBIT(MCU_STATUS_REG, WDRF)\
+	}
 #else
 // Disable signature when using an old avr toolchain
 #define DEFAULT_CORE(_vector_size) \
+	.ioend  = RAMSTART - 1, \
 	.ramend = RAMEND, \
 	.flashend = FLASHEND, \
 	.e2end = E2END, \

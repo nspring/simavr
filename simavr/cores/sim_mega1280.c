@@ -20,7 +20,6 @@
  */
 
 #include "sim_avr.h"
-#include "sim_core_declare.h"
 #include "avr_eeprom.h"
 #include "avr_flash.h"
 #include "avr_watchdog.h"
@@ -31,6 +30,7 @@
 #include "avr_timer.h"
 #include "avr_spi.h"
 #include "avr_twi.h"
+#include "avr_acomp.h"
 
 void m1280_init(struct avr_t * avr);
 void m1280_reset(struct avr_t * avr);
@@ -41,6 +41,8 @@ void m1280_reset(struct avr_t * avr);
 #define __AVR_ATmega1280__
 #endif
 #include "avr/iom1280.h"
+
+#include "sim_core_declare.h"
 
 /*
  * This is a template for all of the 1280 devices, hopefully
@@ -54,6 +56,7 @@ const struct mcu_t {
 	avr_ioport_t	porta, portb, portc, portd, porte, portf, portg, porth, portj, portk, portl;
 	avr_uart_t		uart0,uart1;
 	avr_uart_t		uart2,uart3;
+	avr_acomp_t		acomp;
 	avr_adc_t		adc;
 	avr_timer_t		timer0,timer1,timer2,timer3,timer4,timer5;
 	avr_spi_t		spi;
@@ -105,6 +108,30 @@ const struct mcu_t {
 	AVR_UARTX_DECLARE(1, PRR1, PRUSART1),
 	AVR_UARTX_DECLARE(2, PRR1, PRUSART2),
 	AVR_UARTX_DECLARE(3, PRR1, PRUSART3),
+
+	.acomp = {
+		.mux_inputs = 16,
+		.mux = { AVR_IO_REGBIT(ADMUX, MUX0), AVR_IO_REGBIT(ADMUX, MUX1),
+				AVR_IO_REGBIT(ADMUX, MUX2), AVR_IO_REGBIT(ADCSRB, MUX5) },
+		.pradc = AVR_IO_REGBIT(PRR0, PRADC),
+		.aden = AVR_IO_REGBIT(ADCSRA, ADEN),
+		.acme = AVR_IO_REGBIT(ADCSRB, ACME),
+
+		.r_acsr = ACSR,
+		.acis = { AVR_IO_REGBIT(ACSR, ACIS0), AVR_IO_REGBIT(ACSR, ACIS1) },
+		.acic = AVR_IO_REGBIT(ACSR, ACIC),
+		.aco = AVR_IO_REGBIT(ACSR, ACO),
+		.acbg = AVR_IO_REGBIT(ACSR, ACBG),
+		.disabled = AVR_IO_REGBIT(ACSR, ACD),
+
+		.timer_name = '1',
+
+		.ac = {
+			.enable = AVR_IO_REGBIT(ACSR, ACIE),
+			.raised = AVR_IO_REGBIT(ACSR, ACI),
+			.vector = ANALOG_COMP_vect,
+		}
+	},
 
 	.adc = {
 		.r_admux = ADMUX,
@@ -652,6 +679,7 @@ void m1280_init(struct avr_t * avr)
 	avr_uart_init(avr, &mcu->uart1);
 	avr_uart_init(avr, &mcu->uart2);
 	avr_uart_init(avr, &mcu->uart3);
+	avr_acomp_init(avr, &mcu->acomp);
 	avr_adc_init(avr, &mcu->adc);
 	avr_timer_init(avr, &mcu->timer0);
 	avr_timer_init(avr, &mcu->timer1);
