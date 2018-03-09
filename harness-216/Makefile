@@ -11,7 +11,7 @@ simavr = ../
 SIMAVR=../
 
 IPATH = .
-# unused IPATH += ../examples/parts
+IPATH += ../examples/parts
 IPATH += ${simavr}/include
 IPATH += ${simavr}/simavr/sim
 

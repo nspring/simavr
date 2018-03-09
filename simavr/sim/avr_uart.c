@@ -259,6 +259,10 @@ avr_uart_check_color_support() {
   return;
 }
 
+static int putchar_stderr(int c) {
+  return fputc(c, stderr);
+}
+
 static void
 avr_uart_udr_write(
 		struct avr_t * avr,
@@ -302,10 +306,10 @@ avr_uart_udr_write(
 #ifdef NO_COLOR
 			AVR_LOG(avr, LOG_OUTPUT, "%s\n", p->stdio_out);
 #else
-            putp( tparm( set_a_foreground, 32) );
-            putp( (const char *)p->stdio_out ); 
-            putp( "\n" ); 
-            putp( tparm( set_a_foreground, 7) );
+            tputs( tparm( set_a_foreground, 32), 1, putchar_stderr );
+            tputs( (const char *)p->stdio_out, 1, putchar_stderr ); 
+            tputs( "\n", 1, putchar_stderr ); 
+            tputs( tparm( set_a_foreground, 7), 1, putchar_stderr );
 #endif
 		}
 	}

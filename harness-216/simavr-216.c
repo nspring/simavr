@@ -27,6 +27,8 @@
 #include "sim_vcd_file.h"
 #include "avr_adc.h"
 #include "avr_acomp.h"
+#include "avr_uart.h"
+#include "uart_pty.h"
 
 #define F_CPU 8000000U
 
@@ -133,15 +135,19 @@ int main(int argc, char *argv[])
 	const char * fname;
     unsigned long step, step_limit = F_CPU * 15; /* 15 seconds, 120,000,000 */
     struct timeval start_time, end_time, delta_t;
+    int zsuccess;
 
     if (argc > 1) { 
-      fname = argv[1]; //  "atmega48_ledramp.axf";
+      fname = argv[1]; 
     } else {
       fprintf(stderr, "need firmware to test as first argument\n");
       exit(EXIT_FAILURE);
     }
 
-	printf("elf_read_firmward returned: %d\n", elf_read_firmware(fname, &f)); 
+    if((zsuccess = elf_read_firmware(fname, &f)) != 0) {
+      printf("elf_read_firmward returned nonzero code: %d\n", zsuccess);
+      exit(1);
+    }
 
     if(f.mmcu[0] == '\0') { 
       fprintf(stderr, "Failed to find simavr_tracing.h defined processor infomation in %s; using default atmega32u4 at 8Mhz\n", fname);
@@ -186,6 +192,10 @@ int main(int argc, char *argv[])
       printf("avr_vcd_init_input returned %d\n",
              avr_vcd_init_input(avr, "gtkwave_input.vcd", &vcd_input_file) );
     }
+
+    /* from simduino.c */
+	// uart_pty_init(avr, &uart_pty);
+	// uart_pty_connect(&uart_pty, '0');
 
     /* something for setting the analog light value */
     /* this is from one of the tests. */
