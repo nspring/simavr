@@ -30,7 +30,44 @@
 #include "avr_uart.h"
 #include "uart_pty.h"
 
+#include "commando.h"
+
 #define F_CPU 8000000U
+
+/* command-line configuratble parameters */
+boolean disable_neopixel;
+boolean disable_statistics;
+FILE *neopixel_log_fp = NULL;
+boolean enable_gdb_on_crash;
+int set_log_level;
+
+void open_neopixel_log(const char *str_arg, /*@unused@*/ void *a) {
+  neopixel_log_fp = fopen(str_arg,"w");
+  if(!neopixel_log_fp) {
+    fprintf(stderr, "unable to open %s as neopixel log; reverting to stdout\n", str_arg);
+    neopixel_log_fp = stdout;
+  }
+}
+
+struct commandos commands[] = {
+  { "Disable neopixel printing",
+    "disable-neopixel", 'N', no_argument,
+    commando_boolean, &disable_neopixel },
+  { "Disable statistics (cycles taken, led flip count)",
+    "disable-statistics", 'S', no_argument,
+    commando_boolean, &disable_statistics },
+  { "Dump neopixel trace to file named by argument",
+    "neopixel-file", 'n', required_argument,
+    open_neopixel_log, NULL },
+  { "Enable gdb on illegal instruction / crash",
+    "gdb-crash", 'G', no_argument,
+    commando_boolean, &enable_gdb_on_crash },
+  { "Set AVR log level, 0 is none, 4 is max",
+    "log-level", 'l', required_argument,
+    commando_int, &set_log_level },
+  { HELP_COMMANDO(commands) },
+  { END_COMMANDO }
+};
 
 avr_t * avr = NULL;
 avr_vcd_t vcd_output_file;
@@ -40,6 +77,17 @@ uint8_t	pin_state = 0;	// current port B
 float pixsize = 64;
 int window;
 
+/* doesn't print random stuff to stdout / stderr */
+static void simavr_216_logger(avr_t * avr, const int level,
+                              const char * format, va_list ap) {
+  /* before avr is set, use the global log level in this file. */
+  if (!avr && level <= set_log_level) {
+    vfprintf((level > 0) ? stderr : stdout, format, ap);
+  } else if (avr && avr->log >= level) {
+    /* after avr is set, use the avr->log level, likely identical. */
+    vfprintf((level > 0) ? stderr : stdout, format, ap);
+  }
+}
 /*
  * called when the AVR change any of the pins on port C (c bit 6 is the red led)
  * so lets update our buffer
@@ -115,19 +163,18 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
   }
   
   if(position > 2390) {
-    printf("pixel dump at cycle %llu: ", (unsigned long long)avr->cycle);
+    fprintf(neopixel_log_fp, "pixel dump at cycle %llu: ", (unsigned long long)avr->cycle);
     for(pixel=0; pixel<10; pixel++) {
       for(color=0; color<3; color++) {
         /* TODO: consider RGB for diminished confusion? */
-        printf("%02x", Pixels[pixel][color]);
+        fprintf(neopixel_log_fp, "%02x", Pixels[pixel][color]);
       }
-      printf(" ");
+      fprintf(neopixel_log_fp, " ");
     }
-    printf("\n");
+    fprintf(neopixel_log_fp, "\n");
   }
 
 }
-
 
 int main(int argc, char *argv[])
 {
@@ -136,25 +183,31 @@ int main(int argc, char *argv[])
     unsigned long step, step_limit = F_CPU * 15; /* 15 seconds, 120,000,000 */
     struct timeval start_time, end_time, delta_t;
     int zsuccess;
+    int fname_arg_index;
 
-    if (argc > 1) { 
-      fname = argv[1]; 
+    neopixel_log_fp = stdout; /* default, but not compile time constant */
+    fname_arg_index = commando_parse(argc,argv,commands);
+
+    avr_global_logger_set(simavr_216_logger);
+
+    if (argc > fname_arg_index) { 
+      fname = argv[fname_arg_index]; 
     } else {
-      fprintf(stderr, "need firmware to test as first argument\n");
+      fprintf(stderr, "need firmware to test as last argument\n");
       exit(EXIT_FAILURE);
     }
 
     if((zsuccess = elf_read_firmware(fname, &f)) != 0) {
-      printf("elf_read_firmward returned nonzero code: %d\n", zsuccess);
+      fprintf(stderr, "elf_read_firmware returned nonzero code: %d\n", zsuccess);
       exit(1);
     }
 
     if(f.mmcu[0] == '\0') { 
-      fprintf(stderr, "Failed to find simavr_tracing.h defined processor infomation in %s; using default atmega32u4 at 8Mhz\n", fname);
+      AVR_LOG(avr, LOG_WARNING, "Failed to find simavr_tracing.h defined processor infomation in %s; using default atmega32u4 at 8Mhz\n", fname);
       strcpy(f.mmcu, "atmega32u4");
       f.frequency = F_CPU;
     } else  {
-      fprintf(stderr, "firmware %s f=%d mmcu=%s\n", fname, (int)f.frequency, f.mmcu);
+      AVR_LOG(avr, LOG_DEBUG, "firmware %s f=%d mmcu=%s\n", fname, (int)f.frequency, f.mmcu);
     }
 
 	avr = avr_make_mcu_by_name(f.mmcu);
@@ -163,23 +216,29 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	avr_init(avr);
+    avr->log = set_log_level;
 	avr_load_firmware(avr, &f);
 
     /* register for a callback whenever the red led changes
        state, in order to count how often it toggles.. */
-    avr_irq_register_notify( avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('C'), 7),
-                             led_changed_hook, 
-                             NULL);
-    avr_irq_register_notify( avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('B'), 0),
-                             neopixel_changed_hook, 
-                             NULL);
+    if(!disable_statistics) {
+      avr_irq_register_notify( avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('C'), 7),
+                               led_changed_hook, 
+                               NULL);
+    }
 
-	// even if not setup at startup, activate gdb if crashing
-	avr->gdb_port = 1234;
-	if (0) {
-		avr->state = cpu_Stopped;
-		avr_gdb_init(avr);
-	}
+    if(!disable_neopixel) {
+      avr_irq_register_notify( avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('B'), 0),
+                               neopixel_changed_hook, 
+                               NULL);
+    }
+
+    if(enable_gdb_on_crash) { 
+      avr->gdb_port = 1234;
+    } else { 
+      /* zero should cause avr_sadly_crashed to not call avr_gdb_init */
+      avr->gdb_port = 0;
+    }
 
     /* gets the B pins */
 	avr_vcd_init(avr, "gtkwave_output-B.vcd", &vcd_output_file, 100000 /* usec */);
@@ -222,12 +281,15 @@ int main(int argc, char *argv[])
     gettimeofday(&end_time, NULL);
     timersub(&end_time, &start_time, &delta_t);
 
-    fprintf(stderr,
-            "simulation terminated after %lu steps, %lu.%06d seconds\n",
-            step, (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
-    fprintf(stderr,
-            "led_flipped_count: %d\n",
-            led_flipped_count);
+    if(!disable_statistics) { 
+      /* avr->cycles is ultimately a uint64_t */
+      fprintf(stderr,
+              "simulation terminated after %llu cycles, %lu steps, %lu.%06d real seconds\n",
+              avr->cycle, step, (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
+      fprintf(stderr,
+              "led_flipped_count: %d\n",
+              led_flipped_count);
+    }
 }
 
 

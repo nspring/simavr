@@ -28,7 +28,7 @@ include ${simavr}/Makefile.common
 
 board = ${OBJ}/${target}.elf
 
-${board} : ${OBJ}/${target}.o ${simavr}/simavr/${OBJ}/libsimavr.a
+${board} : ${OBJ}/${target}.o ${simavr}/simavr/${OBJ}/libsimavr.a ${OBJ}/commando.o
 
 ${target}: ${board}
 	@echo $@ done
