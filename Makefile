@@ -9,7 +9,7 @@ RELEASE	?= 0
 
 .PHONY: doc
 
-all:	build-simavr build-tests build-examples build-parts
+all:	build-simavr build-tests build-examples build-parts build-simavr-216
 
 build-simavr:
 	$(MAKE) -C simavr RELEASE=$(RELEASE)
@@ -22,6 +22,9 @@ build-examples: build-simavr
 
 build-parts: build-examples
 	$(MAKE) -C examples/parts RELEASE=$(RELEASE)
+
+build-simavr-216:
+	$(MAKE) -C harness-216 RELEASE=$(RELEASE)
 
 install:
 	$(MAKE) -C simavr install RELEASE=$(RELEASE)

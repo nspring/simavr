@@ -120,7 +120,7 @@ void adc_hook(struct avr_irq_t * irq, uint32_t value, void * param)
 }
 
 void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param) {
-  static unsigned long start_cycle, last_cycle;
+  static avr_cycle_count_t start_cycle, last_cycle;
   unsigned long position;
   static unsigned char Pixels[10][3];
 
@@ -132,7 +132,7 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
     /* should make sure this is a low to high transition */
     if(value != 1) {
       if (last_cycle != 0) {
-        fprintf(stderr, "unexpected high to low transition on neopixel pin, %llu cycles after low to high\n", avr->cycle - last_cycle);
+        fprintf(stderr, "unexpected high to low transition on neopixel pin, %llu cycles after low to high\n", (unsigned long long)(avr->cycle - last_cycle));
       } /* else this is the first transition, setting to low initially */
       return;
     }
