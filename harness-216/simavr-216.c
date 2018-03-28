@@ -49,6 +49,11 @@ void open_neopixel_log(const char *str_arg, /*@unused@*/ void *a) {
   }
 }
 
+void print_version_and_exit(/*@unused@*/ const char *dummy, /*@unused@*/ void *a) {
+  printf("simavr-216 version 0.1.0 compiled on " __DATE__ "\n");
+  exit(0);
+}
+
 struct commandos commands[] = {
   { "Disable neopixel printing",
     "disable-neopixel", 'N', no_argument,
@@ -65,6 +70,9 @@ struct commandos commands[] = {
   { "Set AVR log level, 0 is none, 4 is max",
     "log-level", 'l', required_argument,
     commando_int, &set_log_level },
+  { "Show version",
+    "version", 'V', no_argument,
+    print_version_and_exit, NULL },
   { HELP_COMMANDO(commands) },
   { END_COMMANDO }
 };
