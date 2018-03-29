@@ -17,6 +17,7 @@
 #include <string.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <inttypes.h>
 #include <sys/time.h>
 #include <sys/stat.h>
 
@@ -285,10 +286,11 @@ int main(int argc, char *argv[])
     timersub(&end_time, &start_time, &delta_t);
 
     if(!disable_statistics) { 
-      /* avr->cycles is ultimately a uint64_t */
+      /* avr->cycles is ultimately a uint64_t, which may not be a  */
       fprintf(stderr,
-              "simulation terminated after %llu cycles, %lu steps, %lu.%06d real seconds\n",
-              avr->cycle, step, (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
+              "simulation terminated after %" PRIu64 " cycles, %lu steps, %lu.%06d real seconds\n",
+              avr->cycle, step,
+              (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
       fprintf(stderr,
               "led_flipped_count: %d\n",
               led_flipped_count);
