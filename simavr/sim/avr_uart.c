@@ -252,18 +252,6 @@ avr_uart_baud_write(
 }
 
 static void
-avr_uart_check_color_support() {
-#ifndef NO_COLOR
-  setupterm(0, STDOUT_FILENO, 0); /* terminfo */
-#endif
-  return;
-}
-
-static int putchar_stderr(int c) {
-  return fputc(c, stderr);
-}
-
-static void
 avr_uart_udr_write(
 		struct avr_t * avr,
 		avr_io_addr_t addr,
@@ -299,18 +287,10 @@ avr_uart_udr_write(
         } else { 
           p->stdio_out[p->stdio_len++] = v;
         }
-		p->stdio_out[p->stdio_len] = 0;
+		p->stdio_out[p->stdio_len] = '\0';
 		if (v == '\n' || p->stdio_len >= maxsize) {
 			p->stdio_len = 0;
-
-#ifdef NO_COLOR
 			AVR_LOG(avr, LOG_OUTPUT, "%s\n", p->stdio_out);
-#else
-            tputs( tparm( set_a_foreground, 32), 1, putchar_stderr );
-            tputs( (const char *)p->stdio_out, 1, putchar_stderr ); 
-            tputs( "\n", 1, putchar_stderr ); 
-            tputs( tparm( set_a_foreground, 7), 1, putchar_stderr );
-#endif
 		}
 	}
 	TRACE(printf("UDR%c(%02x) = %02x\n", p->name, addr, v);)
@@ -559,9 +539,6 @@ avr_uart_init(
 
 	avr_register_io_write(avr, p->r_udr, avr_uart_udr_write, p);
 	avr_register_io_read(avr, p->r_udr, avr_uart_read, p);
-
-    avr_uart_check_color_support();
-      
 
 	// status bits
 	// monitor code that reads the rxc flag, and delay it a bit

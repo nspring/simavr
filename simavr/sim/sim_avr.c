@@ -25,6 +25,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <term.h>
 #include "sim_avr.h"
 #include "sim_core.h"
 #include "sim_time.h"
@@ -444,6 +445,10 @@ avr_make_mcu_by_name(
 	return avr;
 }
 
+static int putchar_stderr(int c) {
+  return fputc(c, stderr);
+}
+
 static void
 std_logger(
 		avr_t * avr,
@@ -451,8 +456,26 @@ std_logger(
 		const char * format,
 		va_list ap)
 {
-	if (!avr || avr->log >= level) {
-		vfprintf((level > LOG_ERROR) ?  stdout : stderr , format, ap);
-	}
+  static int initialized;
+  static int termio_enabled;
+
+  if(!initialized) {
+#ifndef NO_COLOR
+    if(getenv("TERM")) {
+      setupterm(0, STDOUT_FILENO, 0); /* terminfo */
+      termio_enabled = 1;
+    }
+#endif
+    initialized=1;
+  }
+
+  if(level == LOG_OUTPUT && termio_enabled) {
+    tputs( tparm( set_a_foreground, 32), 1, putchar_stderr );
+    tputs( (const char *)format, 1, putchar_stderr );
+    tputs( "\n", 1, putchar_stderr );
+    tputs( tparm( set_a_foreground, 7), 1, putchar_stderr );
+  } else if (!avr || avr->log >= level) {
+    vfprintf((level > LOG_ERROR) ?  stdout : stderr , format, ap);
+  }
 }
 
