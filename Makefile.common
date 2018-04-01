@@ -123,6 +123,8 @@ LDFLAGS 	+= -lelf
 ifneq ("$(wildcard /usr/lib/librt.so)","")
 LDFLAGS 	+= -lrt 
 endif
+# for portable colorization
+LDFLAGS 	+= -ltermcap
 
 ifeq (${WIN}, Msys)
 LDFLAGS      += -lws2_32

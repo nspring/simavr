@@ -23,18 +23,11 @@
 	along with simavr.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifdef NO_COLOR
-	#define FONT_GREEN		
-	#define FONT_DEFAULT	
-#else
-	#define FONT_GREEN		"\e[32m"
-	#define FONT_DEFAULT	"\e[0m"
-#endif
-
 #include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <term.h>
 #include "avr_uart.h"
 #include "sim_hex.h"
 #include "sim_time.h"
@@ -259,6 +252,14 @@ avr_uart_baud_write(
 }
 
 static void
+avr_uart_check_color_support() {
+#ifndef NO_COLOR
+  setupterm(0, STDOUT_FILENO, 0); /* terminfo */
+#endif
+  return;
+}
+
+static void
 avr_uart_udr_write(
 		struct avr_t * avr,
 		avr_io_addr_t addr,
@@ -283,12 +284,29 @@ avr_uart_udr_write(
 		const int maxsize = 256;
 		if (!p->stdio_out)
 			p->stdio_out = malloc(maxsize);
-		p->stdio_out[p->stdio_len++] = v < ' ' ? '.' : v;
+        if(v < ' ')  {
+          /* skip printing \r.  print \n as buffered below. */
+          if(v != '\r' && v != '\n') { 
+            if(p->stdio_len > maxsize-5)
+              p->stdio_out = realloc(p->stdio_out, p->stdio_len+5);
+            sprintf((char *)p->stdio_out + p->stdio_len, "\\x%02x", v);
+            p->stdio_len += 4;
+          }
+        } else { 
+          p->stdio_out[p->stdio_len++] = v;
+        }
 		p->stdio_out[p->stdio_len] = 0;
-		if (v == '\n' || p->stdio_len == maxsize) {
+		if (v == '\n' || p->stdio_len >= maxsize) {
 			p->stdio_len = 0;
-			AVR_LOG(avr, LOG_OUTPUT,
-					FONT_GREEN "%s\n" FONT_DEFAULT, p->stdio_out);
+
+#ifdef NO_COLOR
+			AVR_LOG(avr, LOG_OUTPUT, "%s\n", p->stdio_out);
+#else
+            putp( tparm( set_a_foreground, 32) );
+            putp( (const char *)p->stdio_out ); 
+            putp( "\n" ); 
+            putp( tparm( set_a_foreground, 7) );
+#endif
 		}
 	}
 	TRACE(printf("UDR%c(%02x) = %02x\n", p->name, addr, v);)
@@ -537,6 +555,9 @@ avr_uart_init(
 
 	avr_register_io_write(avr, p->r_udr, avr_uart_udr_write, p);
 	avr_register_io_read(avr, p->r_udr, avr_uart_read, p);
+
+    avr_uart_check_color_support();
+      
 
 	// status bits
 	// monitor code that reads the rxc flag, and delay it a bit
