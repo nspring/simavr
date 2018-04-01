@@ -204,7 +204,7 @@ gdb_send_quick_status(
         READ_SREG_INTO(g->avr, sreg);
 
 	sprintf(cmd, "T%02x20:%02x;21:%02x%02x;22:%02x%02x%02x00;",
-            signal ? signal : 5, sreg,
+                signal ? signal : 5, sreg,
 		g->avr->data[R_SPL], g->avr->data[R_SPH],
 		g->avr->pc & 0xff, (g->avr->pc>>8)&0xff, (g->avr->pc>>16)&0xff);
 	gdb_send_reply(g, cmd);
