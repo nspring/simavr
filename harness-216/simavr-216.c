@@ -17,6 +17,7 @@
 #include <string.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <inttypes.h>
 #include <sys/time.h>
 #include <sys/stat.h>
 
@@ -28,20 +29,19 @@
 #include "avr_adc.h"
 #include "avr_acomp.h"
 #include "avr_uart.h"
-#include "uart_pty.h"
 
 #include "commando.h"
 
 #define F_CPU 8000000U
 
-/* command-line configuratble parameters */
-boolean disable_neopixel;
-boolean disable_statistics;
-FILE *neopixel_log_fp = NULL;
-boolean enable_gdb_on_crash;
-int set_log_level;
+/* command-line configurable parameters */
+static boolean disable_neopixel;
+static boolean disable_statistics;
+static FILE *neopixel_log_fp;
+static boolean enable_gdb_on_crash;
+static int set_log_level = 1;
 
-void open_neopixel_log(const char *str_arg, /*@unused@*/ void *a) {
+static void open_neopixel_log(const char *str_arg, /*@unused@*/ void *a) {
   neopixel_log_fp = fopen(str_arg,"w");
   if(!neopixel_log_fp) {
     fprintf(stderr, "unable to open %s as neopixel log; reverting to stdout\n", str_arg);
@@ -49,7 +49,12 @@ void open_neopixel_log(const char *str_arg, /*@unused@*/ void *a) {
   }
 }
 
-struct commandos commands[] = {
+static void print_version_and_exit(/*@unused@*/ const char *dummy, /*@unused@*/ void *a) {
+  printf("simavr-216 version 0.1.0 compiled on " __DATE__ "\n");
+  exit(0);
+}
+
+static struct commandos commands[] = {
   { "Disable neopixel printing",
     "disable-neopixel", 'N', no_argument,
     commando_boolean, &disable_neopixel },
@@ -65,19 +70,21 @@ struct commandos commands[] = {
   { "Set AVR log level, 0 is none, 4 is max",
     "log-level", 'l', required_argument,
     commando_int, &set_log_level },
+  { "Show version",
+    "version", 'V', no_argument,
+    print_version_and_exit, NULL },
   { HELP_COMMANDO(commands) },
   { END_COMMANDO }
 };
 
-avr_t * avr = NULL;
-avr_vcd_t vcd_output_file;
-avr_vcd_t vcd_input_file;
-uint8_t	pin_state = 0;	// current port B
+static avr_t * avr = NULL;
+static avr_vcd_t vcd_output_file;
+static avr_vcd_t vcd_input_file;
+static uint8_t	pin_state = 0;	// current port B
 
-float pixsize = 64;
-int window;
-
-/* doesn't print random stuff to stdout / stderr */
+/* Custom logger function doesn't print random stuff to
+   stdout / stderr.  log 0 goes to stdout, but initial 
+   stuff while loading the firmware goes nowhere. */
 static void simavr_216_logger(avr_t * avr, const int level,
                               const char * format, va_list ap) {
   /* before avr is set, use the global log level in this file. */
@@ -88,6 +95,7 @@ static void simavr_216_logger(avr_t * avr, const int level,
     vfprintf((level > 0) ? stderr : stdout, format, ap);
   }
 }
+
 /*
  * called when the AVR change any of the pins on port C (c bit 6 is the red led)
  * so lets update our buffer
@@ -99,7 +107,7 @@ void pin_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
 }
 
 int led_flipped_count;
-void led_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
+static void led_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
 {
   static unsigned char led_is_on;
   if(value != led_is_on) led_flipped_count++;
@@ -111,8 +119,8 @@ void adc_hook(struct avr_irq_t * irq, uint32_t value, void * param)
   printf("adc is hooked!\n");
 }
 
-void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param) {
-  static unsigned long start_cycle, last_cycle;
+static void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param) {
+  static avr_cycle_count_t start_cycle, last_cycle;
   unsigned long position;
   static unsigned char Pixels[10][3];
 
@@ -124,7 +132,7 @@ void neopixel_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
     /* should make sure this is a low to high transition */
     if(value != 1) {
       if (last_cycle != 0) {
-        fprintf(stderr, "unexpected high to low transition on neopixel pin, %llu cycles after low to high\n", avr->cycle - last_cycle);
+        fprintf(stderr, "unexpected high to low transition on neopixel pin, %llu cycles after low to high\n", (unsigned long long)(avr->cycle - last_cycle));
       } /* else this is the first transition, setting to low initially */
       return;
     }
@@ -186,9 +194,9 @@ int main(int argc, char *argv[])
     int fname_arg_index;
 
     neopixel_log_fp = stdout; /* default, but not compile time constant */
-    fname_arg_index = commando_parse(argc,argv,commands);
-
     avr_global_logger_set(simavr_216_logger);
+
+    fname_arg_index = commando_parse(argc,argv,commands);
 
     if (argc > fname_arg_index) { 
       fname = argv[fname_arg_index]; 
@@ -252,10 +260,6 @@ int main(int argc, char *argv[])
              avr_vcd_init_input(avr, "gtkwave_input.vcd", &vcd_input_file) );
     }
 
-    /* from simduino.c */
-	// uart_pty_init(avr, &uart_pty);
-	// uart_pty_connect(&uart_pty, '0');
-
     /* something for setting the analog light value */
     /* this is from one of the tests. */
     /* the schematic shows A5 on PF0, ADC0 */
@@ -282,26 +286,13 @@ int main(int argc, char *argv[])
     timersub(&end_time, &start_time, &delta_t);
 
     if(!disable_statistics) { 
-      /* avr->cycles is ultimately a uint64_t */
+      /* avr->cycles is ultimately a uint64_t, which may not be a  */
       fprintf(stderr,
-              "simulation terminated after %llu cycles, %lu steps, %lu.%06d real seconds\n",
-              avr->cycle, step, (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
+              "simulation terminated after %" PRIu64 " cycles, %lu steps, %lu.%06d real seconds\n",
+              avr->cycle, step,
+              (unsigned long)delta_t.tv_sec, (int)delta_t.tv_usec);
       fprintf(stderr,
               "led_flipped_count: %d\n",
               led_flipped_count);
     }
 }
-
-
-/* cruft from https://groups.google.com/forum/#!topic/simavr/S0hHPd6Y99Q 
-avr_irq_register_notify(
-                        avr_io_getirq( Avr, AVR_IOCTL_ADC_GETIRQ,
-                                       ADC_IRQ_OUT_TRIGGER ),
-                        adc_hook,
-                        this);
-
-m_adc_irq = avr_alloc_irq(0, 1);
-avr_connect_irq( m_adc_irq, avr_io_getirq( AvrProcessor,
-                                           AVR_IOCTL_ADC_GETIRQ, m_pin ) );
-*/
-
