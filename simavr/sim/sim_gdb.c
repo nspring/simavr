@@ -199,9 +199,9 @@ gdb_send_quick_status(
 		uint8_t signal )
 {
 	char cmd[64];
-    uint8_t sreg;
+        uint8_t sreg;
 
-    READ_SREG_INTO(g->avr, sreg);
+        READ_SREG_INTO(g->avr, sreg);
 
 	sprintf(cmd, "T%02x20:%02x;21:%02x%02x;22:%02x%02x%02x00;",
             signal ? signal : 5, sreg,
@@ -580,9 +580,9 @@ avr_gdb_handle_watchpoints(
 	if (kind & type) {
 		/* Send gdb reply (see GDB user manual appendix E.3). */
 		char cmd[78];
-        uint8_t sreg;
+                uint8_t sreg;
 
-        READ_SREG_INTO(g->avr, sreg);
+                READ_SREG_INTO(g->avr, sreg);
 		sprintf(cmd, "T%02x20:%02x;21:%02x%02x;22:%02x%02x%02x00;%s:%06x;",
 				5, sreg,
 				g->avr->data[R_SPL], g->avr->data[R_SPH],
