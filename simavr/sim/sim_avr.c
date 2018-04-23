@@ -470,9 +470,12 @@ std_logger(
   }
 
   if(level == LOG_OUTPUT && termio_enabled) {
+    char *message;
     tputs( tparm( set_a_foreground, 32), 1, putchar_stderr );
-    tputs( (const char *)format, 1, putchar_stderr );
-    tputs( "\n", 1, putchar_stderr );
+    vasprintf(&message, format, ap);
+    tputs( message, 1, putchar_stderr );
+    free(message);
+    //     tputs( "\n", 1, putchar_stderr );
     tputs( tparm( set_a_foreground, 7), 1, putchar_stderr );
   } else if (!avr || avr->log >= level) {
     vfprintf((level > LOG_ERROR) ?  stdout : stderr , format, ap);
