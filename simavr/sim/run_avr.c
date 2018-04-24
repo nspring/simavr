@@ -24,6 +24,7 @@
 #include <libgen.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/resource.h>
 #include "sim_avr.h"
 #include "sim_elf.h"
 #include "sim_core.h"
@@ -186,6 +187,20 @@ main(
           fprintf(stderr, "%s: Assuming atmega32u4\n", argv[0]);
         }
     } 
+
+    /* ns for 216; catch runaway simulators by setting an
+       rlimit on cpu for this process; */
+    {
+      /* a bit extra allows for a sigxcpu handler, as yet unimplemented. */
+      struct rlimit rl = { 120, 130 }; 
+      if(setrlimit(RLIMIT_CPU, &rl)) {
+        fprintf(stderr, "%s: Unable to set default CPU time limit of 120s\n", argv[0]);
+      }
+      rl.rlim_cur = 0; rl.rlim_max = 0; 
+      if(setrlimit(RLIMIT_CORE, &rl)) {
+        fprintf(stderr, "%s: Unable to set CORE size to zero\n", argv[0]);
+      }
+    }
 
 	avr = avr_make_mcu_by_name(f.mmcu);
 	if (!avr) {

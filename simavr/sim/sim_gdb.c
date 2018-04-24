@@ -489,6 +489,13 @@ gdb_network_handler(
 	} else {
 		FD_SET(g->listen, &read_set);
 		max = g->listen + 1;
+        /* ns added for grace protection; not obviously a
+         good idea in general, but that's why I only bump
+         the select timeout rather than exit eagerly. */
+        if(getppid() == 1) {
+          AVR_LOG(g->avr, LOG_ERROR, "GDB: simavr appears to be an orphan process, extending wait\n");
+          dosleep += 1000000;
+        }
 	}
 	struct timeval timo = { dosleep / 1000000, dosleep % 1000000 };
 	int ret = select(max, &read_set, NULL, NULL, &timo);
