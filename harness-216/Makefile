@@ -40,8 +40,8 @@ run: ${board}
 	${board} ../../build-circuitplay32u4cat/circuit-playground.elf
 
 
-DESTDIR = /usr/local
-PREFIX = ${DESTDIR}
+DESTDIR ?= /usr/local
+PREFIX ?= ${DESTDIR}
 
 install: ${OBJ}/${target}.elf
 	$(MKDIR) $(DESTDIR)/bin
