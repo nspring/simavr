@@ -47,7 +47,7 @@ ifeq (${shell uname}, Linux)
 ${target}: ${OBJ}/${target}.so
 endif
 
-install: ${target}
+install: obj ${target}
 	$(MKDIR) $(DESTDIR)/include/simavr/parts
 	$(INSTALL) -m644 *.h $(DESTDIR)/include/simavr/parts/
 	$(INSTALL) ${OBJ}/libsimavrparts.a $(DESTDIR)/lib/
