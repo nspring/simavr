@@ -23,8 +23,12 @@ build-examples: build-simavr
 build-parts: build-examples
 	$(MAKE) -C examples/parts RELEASE=$(RELEASE)
 
-install:
+install: install-simavr install-harness
+
+install-simavr:
 	$(MAKE) -C simavr install RELEASE=$(RELEASE)
+
+install-harness: 
 	$(MAKE) -C harness-216 install RELEASE=$(RELEASE)
 
 doc:
