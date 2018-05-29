@@ -32,7 +32,7 @@ install-simavr:
 	$(MAKE) -C simavr install RELEASE=$(RELEASE) DESTDIR=$(DESTDIR) PREFIX=$(PREFIX)
 
 install-parts:
-	$(MAKE) -C examples/parts RELEASE=$(RELEASE) DESTDIR=$(DESTDIR) PREFIX=$(PREFIX)
+	$(MAKE) -C examples/parts install RELEASE=$(RELEASE) DESTDIR=$(DESTDIR) PREFIX=$(PREFIX)
 
 doc:
 	$(MAKE) -C doc RELEASE=$(RELEASE)

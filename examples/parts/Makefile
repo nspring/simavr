@@ -49,12 +49,12 @@ endif
 
 install: ${target}
 	$(MKDIR) $(DESTDIR)/include/simavr/parts
-	$(INSTALL) -m644 parts/*.h $(DESTDIR)/include/simavr/parts/
+	$(INSTALL) -m644 *.h $(DESTDIR)/include/simavr/parts/
 	$(INSTALL) ${OBJ}/libsimavrparts.a $(DESTDIR)/lib/
 	sed -e "s|PREFIX|${PREFIX}|g" -e "s|VERSION|${SIMAVR_VERSION}|g" \
 		simavrparts.pc >$(DESTDIR)/lib/pkgconfig/simavrparts.pc
 ifeq (${shell uname}, Linux)
-	$(INSTALL) ../examples/parts/${OBJ}/libsimavrparts.so.1 $(DESTDIR)/lib/
+	$(INSTALL) ${OBJ}/libsimavrparts.so.1 $(DESTDIR)/lib/
 	ln -sf libsimavrparts.so.1 $(DESTDIR)/lib/libsimavrparts.so
 endif
 
