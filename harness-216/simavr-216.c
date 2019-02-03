@@ -20,6 +20,8 @@
 #include <inttypes.h>
 #include <sys/time.h>
 #include <sys/stat.h>
+#include <assert.h>
+#include <errno.h>
 
 #include "sim_avr.h"
 #include "avr_ioport.h"
@@ -29,6 +31,7 @@
 #include "avr_adc.h"
 #include "avr_acomp.h"
 #include "avr_uart.h"
+#include "avr_twi.h"
 
 #include "commando.h"
 
@@ -39,6 +42,7 @@ static boolean disable_neopixel;
 static boolean disable_statistics;
 static FILE *neopixel_log_fp;
 static boolean enable_gdb_on_crash;
+static boolean enable_gdb_now;
 static int set_log_level = 1;
 
 static void open_neopixel_log(const char *str_arg, /*@unused@*/ void *a) {
@@ -49,8 +53,142 @@ static void open_neopixel_log(const char *str_arg, /*@unused@*/ void *a) {
   }
 }
 
+/* probably should make parallel with open_neopixel_log */
+static char *i2c_log_filename = NULL;
+static FILE *i2c_file = NULL;
+static void set_i2c_log_filename(const char *trace_filename, void *dummy /*@unused@*/) {
+  i2c_log_filename = strdup(trace_filename);
+}
+
+static const char * _twi216_irq_names[2] = {
+		[TWI_IRQ_INPUT] = "8>twi216.out",
+		[TWI_IRQ_OUTPUT] = "32<twi216.in",
+};
+static struct { 
+  avr_irq_t *irq;
+  uint8_t addr_base;
+  uint8_t addr_mask;
+} twi_listener;
+
+void twi216_in_hook(struct avr_irq_t * irq, uint32_t value, void * param) {
+  /* this does get invoked.  Unclear if better than twi_changed_hook */
+  /* fprintf(stderr, "twi216 in hook\n"); */
+}
+
+/* this twi_listener is modeled after i2c_eeprom */
+static void twi_listener_init(struct avr_t *avr,
+                              uint8_t addr,
+                              uint8_t mask) {
+  twi_listener.irq = avr_alloc_irq(&avr->irq_pool, 0,2,_twi216_irq_names);
+  avr_irq_register_notify(twi_listener.irq + TWI_IRQ_OUTPUT, twi216_in_hook, &twi_listener);
+  avr_connect_irq(twi_listener.irq + TWI_IRQ_INPUT,
+                  avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT));
+  avr_connect_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_OUTPUT),
+                  twi_listener.irq + TWI_IRQ_OUTPUT );
+}
+
+static void twi_ack(struct avr_irq_t *irq, uint8_t addr) { 
+  avr_raise_irq(irq - TWI_IRQ_OUTPUT + TWI_IRQ_INPUT,
+                avr_twi_irq_msg(TWI_COND_ACK, addr, 1));
+}
+
+void twi_sendit(struct avr_t *avr) {
+  avr_irq_t *irq = avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT);
+  unsigned int i, d=20;
+  fprintf(stderr, "i2c start from simavr-216\n");
+  avr_raise_irq(irq, avr_twi_irq_msg(TWI_COND_START | TWI_COND_WRITE | TWI_COND_ADDR, 11, 1));
+  /* 
+  for(i=0;i<d;i++) avr_run(avr);
+  fprintf(stderr, "i2c write from simavr-216\n");
+  avr_raise_irq(irq, avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 11, 66));
+  for(i=0;i<d;i++) avr_run(avr);
+  fprintf(stderr, "i2c stop from simavr-216\n");
+  avr_raise_irq(irq, avr_twi_irq_msg(TWI_COND_STOP | TWI_COND_ADDR, 11, 1));
+  */
+}
+
+/* this twi_changed_hook method is modeled after other change hooks. */
+void twi_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
+{
+  /* decode the value through an avr_twi_msg_irq_t */
+  avr_twi_msg_irq_t v;
+  uint8_t address;
+  struct avr_t *avr = (struct avr_t *)param;
+
+  v.u.v = value;
+
+  /* if our simulated sytem employs i2c, 1) ack I2C writes (can't 
+     easily simulate i2c reads), 2) log I2C activity. */
+
+  /* the address provided in the message is the shifted left
+     version that is in the twdr register where the
+     low bit would have been read/write (but the low bit is
+     removed?)  */
+  address = v.u.twi.addr >> 1;
+
+  i2c_file = stderr;
+  if(!i2c_file && i2c_log_filename) {
+    i2c_file = fopen(i2c_log_filename, "w");
+    if(!i2c_file) {
+      fprintf(stderr, "unable to open %s for writing: %s\n", i2c_log_filename,
+              strerror(errno));
+      exit(1);
+    }
+  }
+
+  if (v.u.twi.msg & TWI_COND_ACK) {
+    fprintf(i2c_file, "%llu twi ACK %d %d %d\n", avr->cycle, v.u.twi.msg, address,
+            v.u.twi.data);
+  }
+    
+
+  /* Can be STOP, START, WRITE (don't support READ) */
+  if (v.u.twi.msg & TWI_COND_STOP) {
+    fprintf(i2c_file, "%llu twi STOP %d %d %d\n", avr->cycle, v.u.twi.msg, address,
+            v.u.twi.data);
+    /* stop is not ack'd */
+  } else if (v.u.twi.msg & TWI_COND_START) {
+    fprintf(i2c_file, "%llu twi START %d %d %d\n", avr->cycle, v.u.twi.msg, address,
+            v.u.twi.data
+            );
+    twi_ack(irq, v.u.twi.addr);
+  } else if (v.u.twi.msg & TWI_COND_WRITE) {
+    fprintf(i2c_file, "%llu twi WRITE %d %d\n", avr->cycle, address, v.u.twi.data);
+    twi_ack(irq, v.u.twi.addr);
+  } else if (v.u.twi.msg & TWI_COND_READ) {
+    fprintf(i2c_file, "%llu twi READ %x %d %d\n", avr->cycle, value,  address, v.u.twi.data);
+    //     twi_ack(irq, v.u.twi.addr);
+
+    /* part of trying to send via i2c to the chip */
+    if(value == 0xb2400) { 
+      /* ack of start, not really an ack? */
+      fprintf(stderr, "simavr-216 sending data byte start (a)?\n");
+      avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
+                    avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 11, 66));
+    }
+  } else {
+    fprintf(i2c_file, "%llu twi %x\n", avr->cycle, value);
+
+    /* part of trying to send via i2c to the chip */
+    if(value == 0xb2400 || value == 0x10b0c00) { 
+      /* ack of start, not really an ack? */
+      fprintf(stderr, "sending data byte start?\n");
+      avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
+                    avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 11, 66));
+    } else if(value == 0x420b2800 || value == 0x420b0c00 ) { 
+      /* ack of data?  or straight up read command  */
+      fprintf(stderr, "sending stop?\n");
+      /* adding WRITE seems to keep the avr_twi in the right mode. */
+      /* leavig it off gets the stop to complete and allow writing */
+      avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
+                    avr_twi_irq_msg(TWI_COND_STOP | TWI_COND_WRITE | TWI_COND_ADDR, 11, 1));
+    }
+  }
+  fflush(i2c_file); /* to permit debuging */
+}
+
 static void print_version_and_exit(/*@unused@*/ const char *dummy, /*@unused@*/ void *a) {
-  printf("simavr-216 version 0.1.0 compiled on " __DATE__ "\n");
+  printf("simavr-216 version 0.1.1 compiled on " __DATE__ "\n");
   exit(0);
 }
 
@@ -67,9 +205,15 @@ static struct commandos commands[] = {
   { "Enable gdb on illegal instruction / crash",
     "gdb-crash", 'G', no_argument,
     commando_boolean, &enable_gdb_on_crash },
+  { "Enable gdb immediately",
+    "gdb", 'g', no_argument,
+    commando_boolean, &enable_gdb_now },
   { "Set AVR log level, 0 is none, 4 is max",
     "log-level", 'l', required_argument,
     commando_int, &set_log_level },
+  { "Dump i2c write trace to file named by argument",
+    "i2c-file", '2', required_argument,
+    set_i2c_log_filename, NULL }, 
   { "Show version",
     "version", 'V', no_argument,
     print_version_and_exit, NULL },
@@ -249,10 +393,12 @@ int main(int argc, char *argv[])
     }
 
     /* gets the B pins */
+#ifdef UNUSED_REALLY
 	avr_vcd_init(avr, "gtkwave_output-B.vcd", &vcd_output_file, 100000 /* usec */);
 	avr_vcd_add_signal(&vcd_output_file, 
 		avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('B'), IOPORT_IRQ_PIN_ALL), 8 /* bits */ ,
 		"portb" );
+#endif
 
     struct stat dummy_stat;
     if(stat("gtkwave_input.vcd", &dummy_stat) == 0) {
@@ -270,6 +416,17 @@ int main(int argc, char *argv[])
                             adc_hook,
                             NULL); 
 
+    avr_irq_register_notify(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_OUTPUT),
+                            twi_changed_hook, avr);
+    
+    twi_listener_init(avr,11,3);
+
+    if(enable_gdb_now) {
+      avr->gdb_port = 1234;
+      avr->state = cpu_Stopped;
+      avr_gdb_init(avr);
+    }
+
     /* nstodo: investigate using built in
        avr_cycle_timer_register() to set an expiration time
        within a general mechanism */
@@ -280,6 +437,11 @@ int main(int argc, char *argv[])
         step < step_limit && state != cpu_Done && state != cpu_Crashed;
         step++) { 
 		state = avr_run(avr);
+        if(step==100000) {
+          fprintf(stderr, "simavr-216 sending start signal\n");
+          twi_sendit(avr);
+        }
+           
     }
 
     gettimeofday(&end_time, NULL);

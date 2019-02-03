@@ -63,7 +63,12 @@ ifeq (${shell uname}, Darwin)
    CC			= clang
    IPATH		+= $(HOMEBREW_PREFIX)/include
    LFLAGS		= -L$(HOMEBREW_PREFIX)/lib/
-   CFLAGS		+= -I/$(HOMEBREW_PREFIX)/include/libelf
+   ifneq (${shell test -d $(HOMEBREW_PREFIX)/include/libelf/libelf.h && echo Exists}, Exists)
+     CFLAGS		+= -I/$(HOMEBREW_PREFIX)/include/libelf
+   else
+     CFLAGS		+= -I/$(HOMEBREW_PREFIX)/include
+   endif
+
    AVR_ROOT		:= $(firstword $(wildcard $(HOMEBREW_PREFIX)/Cellar/avr-libc/*/))
    AVR_INC            := ${AVR_ROOT}/avr
    AVR			:= $(HOMEBREW_PREFIX)/bin/avr-
@@ -138,7 +143,7 @@ endif
 ifeq (${V}, 1)
 E		=
 else
-E		= @
+E		= # @
 endif
 
 # The code is compiled "optimized" to the max.
@@ -156,7 +161,7 @@ endif
 # --mcall-prologues can be used here, but messes up debugging a little
 %.axf: %.c
 	@echo AVR-CC ${<}
-	@part=${<} ; part=$${part/_*}; \
+	part=${<} ; part=$${part/_*}; \
 	${AVR}gcc -Wall -gdwarf-2 -Os -std=gnu99 \
 			-mmcu=$$part \
 			-DF_CPU=8000000 \

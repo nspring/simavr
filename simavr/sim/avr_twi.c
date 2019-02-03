@@ -79,10 +79,10 @@ _avr_twi_status_set(
 {
 	avr_regbit_setto_raw(p->io.avr, p->twsr, v);
 #if AVR_TWI_DEBUG
-	AVR_TRACE(p->io.avr, "%s %02x\n", __func__, v);
+	AVR_TRACE(p->io.avr, "%s %02x %sraising interrupt\n", __func__, v, !interrupt ? "not ": "");
 #endif
 	avr_raise_irq(p->io.irq + TWI_IRQ_STATUS, v);
-	if (interrupt)
+	if (interrupt) 
 		avr_raise_interrupt(p->io.avr, &p->twi);
 }
 
@@ -407,6 +407,8 @@ avr_twi_irq_input(
 			p->peer_addr = msg.u.twi.addr & mask;
 			if (p->peer_addr == ((avr->data[p->r_twar] >> 1) & mask)) {
 				// address match, we're talking
+              AVR_TRACE(avr, "I2C address match %s\n",
+                        (msg.u.twi.msg & TWI_COND_WRITE) ? "write" : "" );
 				p->state = TWI_COND_SLAVE;
 				// INVERSE logic here
 				if (!(msg.u.twi.msg & TWI_COND_WRITE))
@@ -417,16 +419,25 @@ avr_twi_irq_input(
 			}
 		} else {
 			// "general call" address
-			AVR_TRACE(avr, "I2C slave start without address?\n");
+			AVR_TRACE(avr, "avr_twi: I2C slave start without address?\n");
 			if (avr->data[p->r_twar] & 1) {
 				// TODO
 			}
 		}
 	}
 	if (msg.u.twi.msg & TWI_COND_STOP) {
-		_avr_twi_delay_state(p, 9,
-			msg.u.twi.msg & TWI_COND_WRITE ?
-				TWI_SRX_ADR_ACK : TWI_STX_ADR_ACK );
+      AVR_TRACE(avr, "avr_twi: I2C stop (mode: %s)\n",
+                msg.u.twi.msg & TWI_COND_WRITE ? "write" : "not write");
+      p->state &= !TWI_COND_SLAVE; /* ns: leave slave state after transaction */
+      _avr_twi_delay_state(p, 9,
+                           msg.u.twi.msg & TWI_COND_WRITE ?
+                           TWI_SRX_STOP_RESTART : TWI_STX_ADR_ACK );
+      if ( msg.u.twi.msg & TWI_COND_WRITE ) {
+        _avr_twi_delay_state(p, 12, TWI_NO_STATE);
+      }
+        /* ns: was TWI_SRX_ADR_ACK, but TWI_SRX_STOP_RESTART seems correct 
+          and leads to the receive interrupt being invoked in the Wire library */
+        return; /* ns */
 	}
 	// receiving an acknowledge bit
 	if (msg.u.twi.msg & TWI_COND_ACK) {
@@ -439,9 +450,12 @@ avr_twi_irq_input(
 			p->state &= ~TWI_COND_ACK;
 	}
 	if (p->state & TWI_COND_SLAVE) {
+      AVR_TRACE(avr, "avr_twi: I2C in slave\n");
 		if (msg.u.twi.msg & TWI_COND_WRITE) {
-			avr->data[p->r_twdr] = msg.u.twi.data;
-			_avr_twi_delay_state(p, 9, TWI_SRX_ADR_DATA_ACK );
+          AVR_TRACE(avr, "avr_twi: I2C received data %d\n", msg.u.twi.data);
+          avr->data[p->r_twdr] = msg.u.twi.data;
+          _avr_twi_delay_state(p, 9, TWI_SRX_ADR_DATA_ACK );
+          avr_raise_interrupt(p->io.avr, &p->twi); /* ns */
 		}
 	} else {
 		// receive a data byte from a slave
