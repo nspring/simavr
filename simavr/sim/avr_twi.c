@@ -71,6 +71,8 @@
 
 #define AVR_TWI_DEBUG 1
 
+static void _avr_twi_delay_state( avr_twi_t * p, int twi_cycles, uint8_t state);
+
 static inline void
 _avr_twi_status_set(
 		avr_twi_t * p,
@@ -84,6 +86,7 @@ _avr_twi_status_set(
 	avr_raise_irq(p->io.irq + TWI_IRQ_STATUS, v);
 	if (interrupt) 
 		avr_raise_interrupt(p->io.avr, &p->twi);
+
 }
 
 static __attribute__ ((unused)) inline uint8_t
@@ -100,8 +103,11 @@ avr_twi_set_state_timer(
 		void * param)
 {
 	avr_twi_t * p = (avr_twi_t *)param;
-	_avr_twi_status_set(p, p->next_twstate, 1);
-	p->next_twstate = 0;
+    uint8_t next_twstate = p->next_twstate;
+
+    p->next_twstate = 0;
+	_avr_twi_status_set(p, next_twstate, 1);
+
 	return 0;
 }
 
@@ -139,13 +145,13 @@ avr_twi_write(
 
 	avr_core_watch_write(avr, addr, v);
 #if AVR_TWI_DEBUG
-	AVR_TRACE(avr, "%s %02x START:%d STOP:%d ACK:%d INT:%d TWSR:%02x (state %02x)\n",
+	AVR_TRACE(avr, "%s %02x START:%d STOP:%d ACK:%d INT:%d TWSR:%02x (state %02x) (pc %x)\n",
 			__func__, v,
 			avr_regbit_get(avr, p->twsta),
 			avr_regbit_get(avr, p->twsto),
 			avr_regbit_get(avr, p->twea),
 			avr_regbit_get(avr, p->twi.raised),
-			avr_regbit_get_raw(p->io.avr, p->twsr), p->state);
+              avr_regbit_get_raw(p->io.avr, p->twsr), p->state, avr->pc);
 #endif
 	if (twen != avr_regbit_get(avr, p->twen)) {
 		twen = !twen;
@@ -213,13 +219,13 @@ avr_twi_write(
 	int do_ack = avr_regbit_get(avr, p->twea) != 0;
 
 	if (p->state & TWI_COND_SLAVE) {
-		// writing or reading a byte
+		// writing or reading a byte as slave
 		if (p->state & TWI_COND_ADDR) {
 #if AVR_TWI_DEBUG
 			if (do_read)
-				AVR_TRACE(avr, "I2C slave READ byte\n");
+              AVR_TRACE(avr, "I2C slave READ byte, peer_addr %d\n", p->peer_addr);
 			else
-				AVR_TRACE(avr, "I2C slave WRITE byte\n");
+				AVR_TRACE(avr, "I2C slave WRITE byte, peer_addr %d\n", p->peer_addr);
 #endif
 			if (do_read) {
 				if (p->state & TWI_COND_WRITE)	{
@@ -246,8 +252,7 @@ avr_twi_write(
 						p->peer_addr, avr->data[p->r_twdr]));
 		}
 	} else {
-
-		// writing or reading a byte
+		// writing or reading a byte as master
 		if (p->state & TWI_COND_ADDR) {
 #if AVR_TWI_DEBUG
 			if (do_read)
@@ -429,14 +434,17 @@ avr_twi_irq_input(
       AVR_TRACE(avr, "avr_twi: I2C stop (mode: %s)\n",
                 msg.u.twi.msg & TWI_COND_WRITE ? "write" : "not write");
       p->state &= !TWI_COND_SLAVE; /* ns: leave slave state after transaction */
-      _avr_twi_delay_state(p, 9,
-                           msg.u.twi.msg & TWI_COND_WRITE ?
-                           TWI_SRX_STOP_RESTART : TWI_STX_ADR_ACK );
+      if( msg.u.twi.msg & TWI_COND_WRITE  ) {
+        _avr_twi_delay_state(p, 9, TWI_SRX_STOP_RESTART );
+      } else { 
+        _avr_twi_delay_state(p, 9, TWI_STX_ADR_ACK );
+      }
       if ( msg.u.twi.msg & TWI_COND_WRITE ) {
-        _avr_twi_delay_state(p, 12, TWI_NO_STATE);
+        // _avr_twi_delay_state(p, 12, TWI_NO_STATE);
       }
         /* ns: was TWI_SRX_ADR_ACK, but TWI_SRX_STOP_RESTART seems correct 
-          and leads to the receive interrupt being invoked in the Wire library */
+          and leads to the receive interrupt being invoked in the Wire library, 
+          which it treats as TW_SR_STOP. */
         return; /* ns */
 	}
 	// receiving an acknowledge bit
@@ -455,7 +463,8 @@ avr_twi_irq_input(
           AVR_TRACE(avr, "avr_twi: I2C received data %d\n", msg.u.twi.data);
           avr->data[p->r_twdr] = msg.u.twi.data;
           _avr_twi_delay_state(p, 9, TWI_SRX_ADR_DATA_ACK );
-          avr_raise_interrupt(p->io.avr, &p->twi); /* ns */
+          /* omitting this, which I previously added, seems to move farther */
+          /*           avr_raise_interrupt(p->io.avr, &p->twi); * ns */
 		}
 	} else {
 		// receive a data byte from a slave
