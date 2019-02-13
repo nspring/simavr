@@ -223,9 +223,9 @@ avr_twi_write(
 		if (p->state & TWI_COND_ADDR) {
 #if AVR_TWI_DEBUG
 			if (do_read)
-              AVR_TRACE(avr, "I2C slave READ byte, peer_addr %d\n", p->peer_addr);
+              AVR_TRACE(avr, "I2C slave READ byte, peer_addr %d\n", p->peer_addr >> 1);
 			else
-				AVR_TRACE(avr, "I2C slave WRITE byte, peer_addr %d\n", p->peer_addr);
+              AVR_TRACE(avr, "I2C slave WRITE byte, peer_addr %d\n", p->peer_addr >> 1);
 #endif
 			if (do_read) {
 				if (p->state & TWI_COND_WRITE)	{
@@ -256,9 +256,9 @@ avr_twi_write(
 		if (p->state & TWI_COND_ADDR) {
 #if AVR_TWI_DEBUG
 			if (do_read)
-				AVR_TRACE(avr, "I2C READ byte from %02x\n", p->peer_addr);
+				AVR_TRACE(avr, "I2C READ byte from %02x\n", p->peer_addr >> 1);
 			else
-				AVR_TRACE(avr, "I2C WRITE byte %02x to %02x\n", avr->data[p->r_twdr], p->peer_addr);
+				AVR_TRACE(avr, "I2C WRITE byte %02x to %02x\n", avr->data[p->r_twdr], p->peer_addr >> 1);
 #endif
 			// a normal data byte
 			uint8_t msgv = do_read ? TWI_COND_READ : TWI_COND_WRITE;
@@ -294,7 +294,7 @@ avr_twi_write(
 #endif
 		} else if (p->state) {
 #if AVR_TWI_DEBUG
-			AVR_TRACE(avr, "I2C Master address %02x\n", avr->data[p->r_twdr]);
+			AVR_TRACE(avr, "I2C Master address 0x%02x\n", avr->data[p->r_twdr] >> 1);
 #endif
 			// send the address
 			p->state |= TWI_COND_ADDR;
@@ -406,11 +406,11 @@ avr_twi_irq_input(
 		p->state = 0;
 		p->peer_addr = 0;
 		if (msg.u.twi.msg & TWI_COND_ADDR) {
-			uint8_t mask = ~avr->data[p->r_twamr] >> 1;
+			uint8_t mask = ~avr->data[p->r_twamr] & ~0x1;
 			AVR_TRACE(avr, "I2C slave start %2x (want %02x&%02x)\n",
-				msg.u.twi.addr, avr->data[p->r_twar] >> 1, mask);
+				msg.u.twi.addr, avr->data[p->r_twar], mask);
 			p->peer_addr = msg.u.twi.addr & mask;
-			if (p->peer_addr == ((avr->data[p->r_twar] >> 1) & mask)) {
+			if (p->peer_addr == ((avr->data[p->r_twar]) & mask)) {
 				// address match, we're talking
               AVR_TRACE(avr, "I2C address match %s\n",
                         (msg.u.twi.msg & TWI_COND_WRITE) ? "write" : "" );

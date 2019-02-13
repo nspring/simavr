@@ -96,7 +96,7 @@ static void twi_sendit(struct avr_t *avr) {
   avr_irq_t *irq = avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT);
   unsigned int i, d=20;
   fprintf(stderr, "i2c start from simavr-216\n");
-  avr_raise_irq(irq, avr_twi_irq_msg(TWI_COND_START | TWI_COND_WRITE | TWI_COND_ADDR, 12, 1));
+  avr_raise_irq(irq, avr_twi_irq_msg(TWI_COND_START | TWI_COND_WRITE | TWI_COND_ADDR, 12 << 1, 1));
 
   /* TODO: more nicely handle receipt of ACK and transmission of the thing to send */
 
@@ -163,13 +163,13 @@ void twi_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
     fprintf(i2c_file, "%llu twi READ %x %d %d\n", avr->cycle, value,  address, v.u.twi.data);
     //     twi_ack(irq, v.u.twi.addr);
 
-#define BUILD(x,y) (((x)<<16) | (y))
+#define BUILD(x,y) (((x)<<17) | (y))
     /* part of trying to send via i2c to the chip */
     if(value == BUILD(12, 0x2400)) { 
       /* ack of start, not really an ack? */
       fprintf(stderr, "simavr-216 sending data byte start (a)?\n");
       avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
-                    avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 12, 66));
+                    avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 12 << 1, 66));
     }
   } else {
     // fprintf(i2c_file, "%llu twi %x\n", avr->cycle, value);
@@ -179,14 +179,14 @@ void twi_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
       /* ack of start, not really an ack? */
       fprintf(stderr, "simavr-216 sending data byte start?\n");
       avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
-                    avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 12, 66));
+                    avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 12 << 1, 66));
     } else if(value == BUILD(12,0x42002800) || value == BUILD(12, 0x42000c00) ) { 
       /* ack of data?  or straight up read command  */
       fprintf(stderr, "sending stop?\n");
       /* adding WRITE seems to keep the avr_twi in the right mode. */
       /* leavig it off gets the stop to complete and allow writing */
       avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
-                    avr_twi_irq_msg(TWI_COND_STOP | TWI_COND_WRITE | TWI_COND_ADDR, 12, 1));
+                    avr_twi_irq_msg(TWI_COND_STOP | TWI_COND_WRITE | TWI_COND_ADDR, 12 << 1, 1));
     }
   }
   /* print the ACK after START/WRITE/READ */
