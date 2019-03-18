@@ -88,14 +88,16 @@ static void twi_listener_init(struct avr_t *avr,
 }
 
 static void twi_ack(struct avr_irq_t *irq, uint8_t addr) { 
-  avr_raise_irq(irq - TWI_IRQ_OUTPUT + TWI_IRQ_INPUT,
+  /* addr is the shifted left addr */
+  avr_raise_irq(irq + TWI_IRQ_INPUT - TWI_IRQ_OUTPUT,
                 avr_twi_irq_msg(TWI_COND_ACK, addr, 1));
 }
 
 static void twi_sendit(struct avr_t *avr) {
   avr_irq_t *irq = avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT);
-  unsigned int i, d=20;
-  fprintf(stderr, "i2c start from simavr-216\n");
+  /* unsigned int i, d=20; */
+  fprintf(stderr, "simavr-216: %llu sending i2c start\n", avr->cycle);
+  /* I think data in the start message should be zero */
   avr_raise_irq(irq, avr_twi_irq_msg(TWI_COND_START | TWI_COND_WRITE | TWI_COND_ADDR, 12 << 1, 1));
 
   /* TODO: more nicely handle receipt of ACK and transmission of the thing to send */
@@ -116,8 +118,7 @@ unsigned long long twi_send_cb(struct avr_t *avr, unsigned long long ull, void *
 }
 
 /* this twi_changed_hook method is modeled after other change hooks. */
-void twi_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
-{
+void twi_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param) {
   /* decode the value through an avr_twi_msg_irq_t */
   avr_twi_msg_irq_t v;
   uint8_t address;
@@ -169,20 +170,22 @@ void twi_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
       /* ack of start, not really an ack? */
       fprintf(stderr, "simavr-216 sending data byte start (a)?\n");
       avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
-                    avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 12 << 1, 66));
+                    avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 12 << 1, 65));
     }
   } else {
     // fprintf(i2c_file, "%llu twi %x\n", avr->cycle, value);
 
     /* part of trying to send via i2c to the chip */
-    if(value == BUILD(12, 0x2400) || value == BUILD(12,0x1000c00)) { 
-      /* ack of start, not really an ack? */
-      fprintf(stderr, "simavr-216 sending data byte start?\n");
+    if(// value == avr_twi_irq_msg(0,12<<1,0) ||
+       // value == avr_twi_irq_msg(1,12<<1,12) ||
+       value == avr_twi_irq_msg(TWI_COND_ACK|TWI_COND_ADDR,12<<1,1)) { 
+      fprintf(stderr, "simavr-216: %llu sending data byte \n", avr->cycle);
       avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
                     avr_twi_irq_msg(TWI_COND_WRITE | TWI_COND_ADDR, 12 << 1, 66));
-    } else if(value == BUILD(12,0x42002800) || value == BUILD(12, 0x42000c00) ) { 
+    } else if(value == avr_twi_irq_msg(TWI_COND_ACK|TWI_COND_ADDR, 12<<1, 66)) { 
+      // BUILD(12,0x42002800) || value == BUILD(12, 0x42000c00) ) { 
       /* ack of data?  or straight up read command  */
-      fprintf(stderr, "sending stop?\n");
+      fprintf(stderr, "sending stop in response to %x\n", value);
       /* adding WRITE seems to keep the avr_twi in the right mode. */
       /* leavig it off gets the stop to complete and allow writing */
       avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_TWI_GETIRQ(0), TWI_IRQ_INPUT),
@@ -233,7 +236,9 @@ static struct commandos commands[] = {
 };
 
 static avr_t * avr = NULL;
+#ifdef UNUSED_REALLY
 static avr_vcd_t vcd_output_file;
+#endif
 static avr_vcd_t vcd_input_file;
 static uint8_t	pin_state = 0;	// current port B
 
@@ -257,8 +262,8 @@ static void simavr_216_logger(avr_t * avr, const int level,
  */
 void pin_changed_hook(struct avr_irq_t * irq, uint32_t value, void * param)
 {
-	pin_state = (pin_state & ~(1 << irq->irq)) | (value << irq->irq);
-    fprintf(stderr, "pin_state %x\n", pin_state);
+  pin_state = (pin_state & ~(1 << irq->irq)) | (value << irq->irq);
+  fprintf(stderr, "pin_state %x\n", pin_state);
 }
 
 int led_flipped_count;
@@ -443,7 +448,14 @@ int main(int argc, char *argv[])
       avr_gdb_init(avr);
     }
 
-    avr_cycle_timer_register(avr, 150000, twi_send_cb, NULL);
+    avr_cycle_timer_register(avr,   150000, twi_send_cb, NULL);
+    avr_cycle_timer_register(avr,  5000000, twi_send_cb, (void *)1);
+    avr_cycle_timer_register(avr, 10000000, twi_send_cb, (void *)2);
+    avr_cycle_timer_register(avr, 15000000, twi_send_cb, (void *)3);
+    avr_cycle_timer_register(avr, 20000000, twi_send_cb, (void *)4);
+    avr_cycle_timer_register(avr, 25000000, twi_send_cb, (void *)5);
+    avr_cycle_timer_register(avr, 30000000, twi_send_cb, (void *)6);
+    avr_cycle_timer_register(avr, 35000000, twi_send_cb, (void *)7);
 
 
     /* nstodo: investigate using built in
